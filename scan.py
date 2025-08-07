@@ -2,15 +2,16 @@
 # scan.py
 
 ## Descrição
-Este módulo contém todas as funções responsáveis por escanear hosts e portas:
-- Ping de IPs
-- Resolução de hostname
-- Obtenção de MAC Address
-- Identificação de fabricante via OUI
-- Detectar sistema operacional pelo TTL
-- Teste de portas comuns (com banner grabbing)
-- Verificação completa de um host (incluindo vulnerabilidades)
+Este módulo contém todas as funções responsáveis por escanear hosts e portas em uma rede local.
 
+### Funcionalidades:
+- Ping de IPs com extração de TTL e latência
+- Resolução de hostname
+- Obtenção de MAC address via ARP
+- Identificação de fabricante via OUI
+- Detecção do sistema operacional com base no TTL
+- Teste de portas comuns (com banner grabbing)
+- Verificação completa de um host, incluindo vulnerabilidades via CVE
 
 ## Autor
 Luiz
@@ -23,6 +24,7 @@ Luiz
 - re
 - cve (interno)
 """
+
 import socket
 import subprocess
 import platform
@@ -33,6 +35,10 @@ from config import auto_configurar
 from cve import verificar_vulnerabilidades_em_banners
 from cve import carregar_base_local_cves
 
+
+# ==== Listas de Portas ====
+
+#: Portas comuns a serem escaneadas em cada host
 PORTAS_COMUNS = [
     22, 23, 3389, 5900, 5985, 5986, 10000, 873, 111, 6000,
     80, 443, 8080, 8443, 8888, 5000, 5173, 4200, 7000, 8000, 8008,
@@ -45,6 +51,7 @@ PORTAS_COMUNS = [
     20, 21, 69, 25, 587, 110, 995, 143, 993
 ]
 
+#: Subconjunto de portas consideradas críticas ou sensíveis
 PORTAS_CRITICAS = {
     23, 135, 137, 138, 139, 445,
     1433, 1521, 3306, 5432, 27017,
@@ -52,11 +59,21 @@ PORTAS_CRITICAS = {
     389, 21, 69, 5985, 5986
 }
 
+
 def ping_host(ip):
+    """
+    Executa um ping no IP informado e retorna status, TTL e latência estimada.
+
+    Parâmetros:
+        ip (str): Endereço IP.
+
+    Retorna:
+        (bool, int, float): (status, ttl, latência)
+    """
     sistema = platform.system().lower()
     param = "-n" if sistema == "windows" else "-c"
     timeout_flag = "-w" if sistema == "windows" else "-W"
-    
+
     try:
         output = subprocess.check_output(
             ["ping", param, "1", timeout_flag, "1", ip],
@@ -64,14 +81,9 @@ def ping_host(ip):
             universal_newlines=True
         )
 
-        # TTL é comum para todos
         ttl_match = re.search(r'(ttl=|TTL=)(\d+)', output)
         ttl = int(ttl_match.group(2)) if ttl_match else -1
 
-        # Regex multilíngue para capturar latência:
-        #   - Linux: "time=1.23 ms"
-        #   - Windows EN: "time=1ms"
-        #   - Windows PT-BR: "tempo=1ms"
         time_match = re.search(r'(tempo|time)[=<]?\s*(\d+(?:\.\d+)?)\s*ms', output, re.IGNORECASE)
         latency = float(time_match.group(2)) if time_match else -1
 
@@ -81,6 +93,15 @@ def ping_host(ip):
 
 
 def detectar_so_por_ttl(ttl):
+    """
+    Detecta o sistema operacional estimado com base no valor TTL.
+
+    Parâmetros:
+        ttl (int): Time-to-Live do pacote.
+
+    Retorna:
+        str: SO estimado (colorido com tags do Rich).
+    """
     if ttl <= 64:
         return "[green]Linux/Unix[/green]"
     elif ttl <= 128:
@@ -89,7 +110,17 @@ def detectar_so_por_ttl(ttl):
         return "[magenta]Cisco/Outro[/magenta]"
     return "Desconhecido"
 
+
 def get_mac(ip):
+    """
+    Obtém o endereço MAC do IP via comando ARP local.
+
+    Parâmetros:
+        ip (str): Endereço IP.
+
+    Retorna:
+        str: MAC formatado ou "MAC N/D"
+    """
     try:
         output = subprocess.check_output(['arp', '-a', ip], text=True)
         for linha in output.splitlines():
@@ -102,13 +133,35 @@ def get_mac(ip):
         pass
     return "MAC N/D"
 
+
 def resolve_hostname(ip):
+    """
+    Resolve o hostname associado ao IP.
+
+    Parâmetros:
+        ip (str): Endereço IP.
+
+    Retorna:
+        str: Hostname ou "Nome N/D"
+    """
     try:
         return socket.gethostbyaddr(ip)[0]
     except:
         return "Nome N/D"
 
+
 def banner_grabbing(ip, porta, timeout=1.5):
+    """
+    Coleta o banner da aplicação que responde em determinada porta.
+
+    Parâmetros:
+        ip (str): Endereço IP.
+        porta (int): Número da porta.
+        timeout (float): Tempo máximo de espera.
+
+    Retorna:
+        str: Banner limpo ou "-"
+    """
     try:
         with socket.create_connection((ip, porta), timeout=timeout) as s:
             s.settimeout(timeout)
@@ -118,7 +171,20 @@ def banner_grabbing(ip, porta, timeout=1.5):
     except:
         return "-"
 
+
 def testar_portas(ip, portas, max_workers, timeout):
+    """
+    Testa várias portas em paralelo em um IP e realiza banner grabbing nas abertas.
+
+    Parâmetros:
+        ip (str): IP alvo.
+        portas (list): Lista de portas a testar.
+        max_workers (int): Nº máximo de threads.
+        timeout (float): Timeout de conexão.
+
+    Retorna:
+        list: Lista de tuplas (porta, banner)
+    """
     def tentar(porta):
         try:
             with socket.create_connection((ip, porta), timeout=timeout):
@@ -134,22 +200,23 @@ def testar_portas(ip, portas, max_workers, timeout):
 
 def verificar_host(ip, fabricantes, max_workers_portas, timeout_socket, base_cves):
     """
-    Realiza varredura completa de um host.
+    Realiza varredura completa de um host (ping, nome, MAC, portas, banners e CVEs).
 
     Parâmetros:
-        ip (str): Endereço IP.
-        fabricantes (dict): Dicionário OUI.
-        max_workers_portas (int): Nº de threads para escanear portas.
-        timeout_socket (float): Timeout de conexão em segundos.
+        ip (str): Endereço IP do alvo.
+        fabricantes (dict): Dicionário de prefixos MAC → fabricante.
+        max_workers_portas (int): Threads paralelas para scan de portas.
+        timeout_socket (float): Timeout de conexão socket.
+        base_cves (dict): Dicionário CVE {id: descrição}
 
     Retorna:
-        dict: Dicionário contendo os dados do host
+        dict: Dados do host analisado.
     """
     from scan import ping_host, resolve_hostname, get_mac, detectar_so_por_ttl, testar_portas, PORTAS_COMUNS
 
-
-
     status, ttl, latencia = ping_host(ip)
+
+    # Host OFFLINE
     if not status:
         return {
             "ip": ip,
@@ -164,26 +231,23 @@ def verificar_host(ip, fabricantes, max_workers_portas, timeout_socket, base_cve
             "latencia": -1
         }
 
+    # Host ONLINE
     nome = resolve_hostname(ip)
     mac = get_mac(ip)
     so = detectar_so_por_ttl(ttl)
+
     if mac != "MAC N/D":
-        prefixo = ":".join(mac.split(":")[:3]).upper()  # Ex: FC:52:CE
+        prefixo = ":".join(mac.split(":")[:3]).upper()
         fabricante = fabricantes.get(prefixo, "Fabricante N/D")
     else:
         fabricante = "Fabricante N/D"
-    portas_banners = testar_portas(ip, PORTAS_COMUNS, max_workers_portas, timeout_socket)
 
+    portas_banners = testar_portas(ip, PORTAS_COMUNS, max_workers_portas, timeout_socket)
     portas = [str(p) for p, _ in portas_banners]
     banners = [f"{p}:{b}" for p, b in portas_banners]
-    
-    vulnerabilidades = verificar_vulnerabilidades_em_banners([b for _, b in portas_banners])
 
-    if mac != "MAC N/D":
-        prefixo = ":".join(mac.split(":")[:3]).upper().strip()
-        fabricante = fabricantes.get(prefixo, "Fabricante N/D")
-    else:
-        fabricante = "Fabricante N/D"
+    vulnerabilidades = verificar_vulnerabilidades_em_banners([b for _, b in portas_banners], base_cves)
+
     return {
         "ip": ip,
         "status": "ONLINE",

@@ -3,36 +3,46 @@
 
 ## Descrição
 Este módulo realiza a auto-configuração de desempenho com base nos recursos
-do hardware (RAM e núcleos de CPU). Ele determina:
+do hardware local, como memória RAM e quantidade de núcleos de CPU.
+
+É utilizado para ajustar automaticamente:
 - Número ideal de threads para varredura de hosts
-- Número de threads para varredura de portas
-- Tempo padrão de timeout para conexões
+- Número de threads para varredura de portas TCP
+- Tempo de timeout padrão para conexões socket
+
+Este comportamento evita sobrecarregar a máquina em que o script for executado,
+sendo especialmente útil em redes grandes ou computadores com hardware limitado.
 
 ## Autor
 Luiz
 
 ## Dependências
-- psutil
-- multiprocessing
+- psutil: Para leitura de memória RAM disponível
+- multiprocessing: Para detectar a quantidade de núcleos de CPU
 """
 
 import psutil
 import multiprocessing
 
-
 def auto_configurar():
     """
-    Ajusta automaticamente a configuração do scanner com base nos recursos do sistema.
+    Ajusta automaticamente os parâmetros de varredura de acordo com os recursos do sistema.
 
-    - Hosts: aumenta o número de threads proporcionalmente à RAM/CPU.
-    - Portas: limita o número de conexões simultâneas dependendo da memória.
-    - Timeout: define o tempo de espera padrão para conexões socket.
+    ### Lógica de ajuste:
+    - Se o sistema tiver >= 8GB de RAM:
+        - Usa até 1000 threads para hosts (limitado por CPU)
+        - 50 threads para portas
+    - Se o sistema tiver entre 4GB e 8GB:
+        - Usa até (núcleos * 30) threads para hosts
+        - 30 threads para portas
+    - Se tiver menos de 4GB:
+        - Limita a 100 threads para hosts e 10 para portas
 
-    ### Retorna:
-    dict: Contendo as chaves:
-        - max_workers_hosts (int): Nº de threads para verificação de hosts.
-        - max_workers_portas (int): Nº de threads para escaneamento de portas.
-        - timeout_socket (float): Tempo de timeout para conexões (segundos).
+    ### Retorno:
+    dict: Um dicionário com as seguintes chaves:
+        - `max_workers_hosts` (int): Número de threads para varredura de hosts
+        - `max_workers_portas` (int): Número de threads para varredura de portas
+        - `timeout_socket` (float): Tempo de espera padrão para conexões socket (em segundos)
     """
     total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
     cpus = multiprocessing.cpu_count()

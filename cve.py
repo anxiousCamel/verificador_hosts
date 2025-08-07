@@ -2,17 +2,24 @@
 # cve.py
 
 ## Descrição
-Este módulo faz a verificação de vulnerabilidades conhecidas com base nos banners encontrados nas portas abertas.
-Requer que os arquivos de dados da NVD estejam baixados localmente em um diretório.
+Este módulo realiza a verificação de vulnerabilidades conhecidas (CVEs) com base nos banners encontrados durante
+o escaneamento de portas. Ele utiliza arquivos locais da NVD (`.json` ou `.json.gz`) para consultar possíveis falhas
+e permite cache em formato `pickle` para acelerar carregamentos futuros.
+
+## Funcionalidades
+- Leitura local da base NVD em JSON ou GZ
+- Extração de nome/versão via regex dos banners
+- Verificação por correspondência textual em CVEs
+- Geração de cache para otimizar desempenho
+- Spinner visual de carregamento
+
+## Requisitos
+- Diretório `nvd_data` com arquivos `nvdcve-1.1-*.json(.gz)`
+- Python 3.6+
+- Bibliotecas: os, json, gzip, re, threading, itertools, time, pickle
 
 ## Autor
 Luiz
-
-## Dependências
-- os
-- json
-- gzip
-- re
 """
 
 import os
@@ -24,14 +31,20 @@ import threading
 import itertools
 import time
 
-
-# Caminho padrão do diretório com os arquivos JSON.GZ da NVD
+# Caminho padrão do diretório com os arquivos CVE da NVD
 DIRETORIO_NVD = "nvd_data"
 ARQUIVO_CACHE = "base_cves_cache.pkl"
 
+
 def _spinner(label="Lendo arquivos da NVD"):
     """
-    Exibe um spinner giratório (|/—\) enquanto os arquivos são carregados.
+    Exibe um spinner no terminal para indicar carregamento em progresso.
+
+    Parâmetros:
+        label (str): Mensagem que será mostrada junto ao spinner.
+
+    Retorna:
+        threading.Event: Objeto de controle para encerrar o spinner.
     """
     done = threading.Event()
 
@@ -41,18 +54,23 @@ def _spinner(label="Lendo arquivos da NVD"):
                 break
             print(f"\r{label} {c} ", end='', flush=True)
             time.sleep(0.1)
-        print("\r" + " " * (len(label) + 4), end="\r")
+        print("\r" + " " * (len(label) + 4), end="\r")  # limpa linha
 
     t = threading.Thread(target=animate)
     t.start()
     return done
 
 
-
 def carregar_base_local_cves(diretorio=DIRETORIO_NVD, usar_cache=True):
     """
-    Carrega CVEs da base NVD, com suporte a cache via pickle.
-    Mostra spinner de progresso durante carregamento dos arquivos.
+    Carrega os CVEs da base local da NVD (json/gz), com suporte a cache.
+
+    Parâmetros:
+        diretorio (str): Caminho do diretório com os arquivos da NVD.
+        usar_cache (bool): Se True, tenta carregar de um cache `.pkl`.
+
+    Retorna:
+        dict: Mapeamento {cve_id: descricao}.
     """
     if usar_cache and os.path.exists(ARQUIVO_CACHE):
         try:
@@ -62,10 +80,11 @@ def carregar_base_local_cves(diretorio=DIRETORIO_NVD, usar_cache=True):
             print(f"[Erro] ao carregar cache: {e}")
 
     base_cves = {}
+
     if not os.path.exists(diretorio):
         return base_cves
 
-    # Inicia o spinner visual
+    # Inicia spinner de carregamento
     spinner_done = _spinner("Lendo arquivos da NVD")
 
     try:
@@ -92,9 +111,9 @@ def carregar_base_local_cves(diretorio=DIRETORIO_NVD, usar_cache=True):
                 except Exception as e:
                     print(f"[Erro] ao ler {caminho_arquivo}: {e}")
     finally:
-        spinner_done.set()  # Finaliza o spinner
+        spinner_done.set()
 
-    # salva cache
+    # Salva cache local
     try:
         with open(ARQUIVO_CACHE, "wb") as f:
             pickle.dump(base_cves, f)
@@ -103,10 +122,17 @@ def carregar_base_local_cves(diretorio=DIRETORIO_NVD, usar_cache=True):
 
     return base_cves
 
+
 def verificar_vulnerabilidades_em_banners(banners, base_cves=None):
     """
-    Verifica vulnerabilidades conhecidas com base em banners e CVEs locais.
-    Usa correspondência por nome e versão de software (extraído via regex).
+    Verifica possíveis CVEs com base nos banners identificados.
+
+    Parâmetros:
+        banners (list[str]): Lista de strings com banners coletados.
+        base_cves (dict): Mapeamento {cve_id: descricao} da NVD local.
+
+    Retorna:
+        list[str]: Lista de CVEs correspondentes aos banners.
     """
     vulnerabilidades = set()
 
@@ -127,8 +153,16 @@ def verificar_vulnerabilidades_em_banners(banners, base_cves=None):
 
 def extrair_nome_versao_banner(banner: str):
     """
-    Extrai nome e versão do software a partir do banner.
-    Ex: 'Apache/2.4.49' => 'apache 2.4.49'
+    Extrai nome e versão do software a partir de uma string de banner.
+
+    Exemplo:
+        'Apache/2.4.49' → 'apache 2.4.49'
+
+    Parâmetros:
+        banner (str): Banner bruto do serviço.
+
+    Retorna:
+        str | None: Nome e versão extraídos ou None se não for possível.
     """
     match = re.search(r'([a-zA-Z\-_]+)[/\s]?([0-9]+\.[0-9]+(?:\.[0-9]+)?)', banner)
     if match:
@@ -136,4 +170,3 @@ def extrair_nome_versao_banner(banner: str):
         versao = match.group(2)
         return f"{nome} {versao}"
     return None
-

@@ -1,34 +1,51 @@
-# Diretórios de cache do Python
-__pycache__/
-*.py[cod]
-*$py.class
+# =====================
+# Ignorar arquivos e diretórios de cache Python
+# =====================
+__pycache__/           # Cache compilado dos módulos Python
+*.py[cod]              # Arquivos .pyc, .pyo, .pyd
+*$py.class             # Bytecode antigo do Jython
 
-# Ambientes virtuais
-.venv/
+# =====================
+# Ambientes virtuais (Python)
+# =====================
+.venv/                 # Virtualenv padrão
 venv/
 env/
-ENV/
+ENV/                   # Alguns sistemas colocam em maiúsculo
 
-# Arquivos de configuração locais (se aplicável)
-config_local.py
-nvd_data/
-base_cves_cache*
-*.pyc
+# =====================
+# Arquivos temporários ou de build
+# =====================
+*.log                  # Logs gerados durante execução
+*.tmp                  # Arquivos temporários
+*.bak                  # Backups automáticos de editores
 
-# Dados ou arquivos temporários
-*.log
-*.tmp
-*.bak
+# =====================
+# Dados grandes ou não versionáveis (NVD, cache, etc)
+# =====================
+nvd_data/              # Diretório com os arquivos NVD (.json, .gz)
+base_cves_cache*       # Cache em pickle (ex: base_cves_cache.pkl)
+*.pyc                  # Segurança adicional para não subir pyc soltos
 
-# Sistema operacional
-.DS_Store
-Thumbs.db
+# =====================
+# Arquivos locais de configuração (ex: senhas, tokens, IPs internos)
+# =====================
+config_local.py        # Arquivo customizado não versionado
 
-# Arquivo de fabricantes (se for local e não versionável)
-manuf
+# =====================
+# Arquivo de fabricantes se for gerado ou não versionável
+# =====================
+manuf                  # Tabela OUI local
+/nvd_data/              # Diretório com os arquivos NVD (.json, .gz)
 
-# Arquivos de backup do VSCode ou editor
-*.code-workspace
+# =====================
+# Ignorar pastas e configs do VSCode
+# =====================
+.vscode/               # Configurações específicas do seu editor
+*.code-workspace       # Projetos do VSCode
 
-# Arquivos do VSCode
-.vscode/
+# =====================
+# Ignorar arquivos específicos de sistema operacional
+# =====================
+.DS_Store              # MacOS
+Thumbs.db              # Windows

@@ -2,10 +2,12 @@
 # utils.py
 
 ## Descrição
-Este módulo contém funções auxiliares de entrada e suporte para o sistema de verificação de hosts:
-- Carregamento da tabela de fabricantes OUI
-- Solicitação de dados do usuário (base de IP e faixa)
-- Funções auxiliares reutilizáveis em outros módulos
+Este módulo contém funções auxiliares utilizadas pelo sistema de verificação de hosts.
+
+### Funcionalidades:
+- Carregamento da tabela de fabricantes OUI (formato Nmap/Wireshark)
+- Solicitação interativa de dados da rede (base e faixa IP)
+- Funções reutilizáveis que evitam duplicação de lógica
 
 ## Autor
 Luiz
@@ -23,10 +25,22 @@ console = Console()
 
 def carregar_tabela_oui(path='manuf'):
     """
-    Carrega a tabela OUI a partir de um arquivo no formato Wireshark/Nmap.
+    Carrega a tabela OUI a partir de um arquivo de texto com dados de fabricantes.
+    
+    Espera um formato semelhante ao usado pelo Nmap ou Wireshark:
+        FC-52-CE   (base)  Fabricante XYZ
+
+    Parâmetros:
+        path (str): Caminho para o arquivo contendo os prefixos MAC.
 
     Retorna:
-        dict: { 'XX:XX:XX': 'Nome do fabricante' }
+        dict: Dicionário no formato { 'XX:XX:XX': 'Nome do fabricante' }
+
+    Exemplo:
+        {
+            'FC:52:CE': 'Cisco Systems',
+            '00:1A:2B': 'Intel Corp'
+        }
     """
     fabricantes = {}
 
@@ -37,36 +51,44 @@ def carregar_tabela_oui(path='manuf'):
     with open(path, encoding='utf-16') as f:
         for linha in f:
             if linha.strip().startswith('#') or not linha.strip():
-                continue
+                continue  # ignora comentários e linhas vazias
 
-            partes = linha.strip().split(None, 2)  # divide por qualquer espaço ou tab
+            partes = linha.strip().split(None, 2)  # separa por espaços ou tabs
             if len(partes) >= 2:
                 prefixo = partes[0].upper().replace('-', ':').strip()
-                prefixo = ":".join(prefixo.split(":")[:3])  # garante XX:XX:XX
+                prefixo = ":".join(prefixo.split(":")[:3])  # garante o formato XX:XX:XX
                 fabricante = partes[2].strip() if len(partes) >= 3 else partes[1].strip()
                 fabricantes[prefixo] = fabricante
 
     return fabricantes
 
 
-
 def solicitar_dados_input():
     """
-    Solicita ao usuário os dados da rede a ser verificada.
+    Solicita os dados de entrada ao usuário no terminal:
+    - Base de rede no formato 10.101.X
+    - Faixa de IPs (início e fim)
+
+    Valida as entradas antes de prosseguir.
 
     Retorna:
         tuple: (ip_base: str, ip_inicio: int, ip_fim: int)
+
+    Exemplo de retorno:
+        ("10.101.6", 1, 150)
     """
     console.print("==============================================", style="cyan")
     console.print(" Verificador de Hosts com Auditoria de Segurança", style="bold white")
     console.print("==============================================\n", style="cyan")
 
+    # Solicita a base da rede
     while True:
         ip_base = input("Digite a base da rede (ex: 10.101.6): ").strip()
         if ip_base.count('.') == 2 and all(p.isdigit() for p in ip_base.split('.')):
             break
         console.print("[red]Base inválida. Use o formato: 10.101.X[/red]")
 
+    # Solicita IP inicial e final
     while True:
         try:
             inicio = int(input("IP inicial (ex: 1): "))

@@ -1,17 +1,25 @@
 """
-# Script: atualizar_nvd.py
+# atualizar_nvd.py
 
-## Descrição:
-Atualiza automaticamente os arquivos CVE da NVD (National Vulnerability Database)
-com base na última verificação. Baixa apenas os anos faltantes ou se ultrapassado
-o número definido de dias desde a última atualização.
+## Descrição
+Este script atualiza automaticamente a base de dados de vulnerabilidades da NVD (National Vulnerability Database),
+baixando os arquivos `nvdcve-1.1-<ano>.json.gz` diretamente do site oficial da NIST.
 
-## Requisitos:
-- Internet ativa
-- Python 3.6+
+Ele evita downloads desnecessários, realizando a verificação de atualização apenas se o último acesso tiver
+ocorrido há mais de `DIAS_ENTRE_ATUALIZACOES` dias.
+
+## Funcionalidades
+- Verifica a data da última atualização da base
+- Baixa automaticamente os arquivos de anos faltantes
+- Garante que os arquivos mais recentes estejam salvos localmente
+- Cria o diretório `nvd_data` se não existir
+
+## Requisitos
+- Conexão com a internet
+- Python 3.6 ou superior
 - requests
 
-## Autor:
+## Autor
 Luiz
 """
 
@@ -19,27 +27,41 @@ import os
 import datetime
 import requests
 
-# ======= CONFIGURAÇÃO =======
+# ========== CONFIGURAÇÃO ========== #
 URL_BASE = "https://nvd.nist.gov/feeds/json/cve/1.1"
 DIRETORIO = "nvd_data"
 DIAS_ENTRE_ATUALIZACOES = 5
 ANO_INICIAL = 2002
 ARQUIVO_LAST_CHECK = ".last_check"
-# ============================
+# ================================== #
 
 
 def get_ano_atual():
+    """
+    Obtém o ano atual com base na data do sistema.
+
+    Retorna:
+        int: Ano atual.
+    """
     return datetime.datetime.now().year
 
 
 def caminho_last_check():
+    """
+    Retorna o caminho absoluto do arquivo de controle `.last_check`.
+
+    Retorna:
+        str: Caminho completo.
+    """
     return os.path.join(DIRETORIO, ARQUIVO_LAST_CHECK)
 
 
 def dias_desde_ultima_verificacao():
     """
-    Retorna o número de dias desde a última verificação registrada.
-    Se não houver registro, força atualização.
+    Calcula o número de dias desde a última verificação.
+
+    Retorna:
+        float: Número de dias passados. Retorna infinito se não houver registro ou erro de leitura.
     """
     try:
         with open(caminho_last_check(), "r") as f:
@@ -55,7 +77,7 @@ def dias_desde_ultima_verificacao():
 
 def registrar_verificacao():
     """
-    Registra a data da última verificação no arquivo de controle.
+    Atualiza o arquivo `.last_check` com a data atual.
     """
     try:
         with open(caminho_last_check(), "w") as f:
@@ -66,7 +88,14 @@ def registrar_verificacao():
 
 def baixar_arquivo(ano: int):
     """
-    Baixa o arquivo do ano especificado, se ainda não estiver presente.
+    Realiza o download do arquivo CVE para o ano especificado.
+
+    Parâmetros:
+        ano (int): Ano desejado da base CVE.
+
+    Ação:
+        - Se o arquivo já existir localmente, ele será ignorado.
+        - Caso contrário, será baixado da NVD.
     """
     nome_arquivo = f"nvdcve-1.1-{ano}.json.gz"
     url = f"{URL_BASE}/{nome_arquivo}"
@@ -90,8 +119,11 @@ def baixar_arquivo(ano: int):
 
 def atualizar_base_nvd():
     """
-    Atualiza a base de dados da NVD.
-    Verifica o intervalo desde a última execução e realiza download apenas se necessário.
+    Função principal que coordena a atualização da base NVD.
+
+    - Verifica se o intervalo mínimo entre atualizações foi respeitado.
+    - Caso necessário, realiza o download de todos os arquivos desde 2002 até o ano atual.
+    - Registra a nova data de atualização ao final.
     """
     os.makedirs(DIRETORIO, exist_ok=True)
 
