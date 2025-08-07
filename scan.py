@@ -132,7 +132,7 @@ def testar_portas(ip, portas, max_workers, timeout):
     return [res for res in resultados if res]
 
 
-def verificar_host(ip, fabricantes, max_workers_portas, timeout_socket):
+def verificar_host(ip, fabricantes, max_workers_portas, timeout_socket, base_cves):
     """
     Realiza varredura completa de um host.
 

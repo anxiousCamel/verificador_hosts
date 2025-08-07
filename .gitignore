@@ -12,7 +12,8 @@ ENV/
 # Arquivos de configuração locais (se aplicável)
 config_local.py
 nvd_data/
-
+base_cves_cache*
+*.pyc
 
 # Dados ou arquivos temporários
 *.log
