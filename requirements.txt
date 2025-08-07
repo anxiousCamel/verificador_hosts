@@ -1,3 +1,17 @@
-rich>=13.0.0
-tqdm>=4.60.0
-psutil>=5.9.0
+# Interface de terminal bonita (tabelas, cores, console avançado)
+rich>=13.7.0
+
+# Barra de progresso para loops longos (ex: leitura de NVD, varredura de IPs)
+tqdm>=4.66.4
+
+# Recomendado para ambientes virtuais (mesmo que não precise instalar via pip diretamente)
+# python >= 3.11 recomendado pelo uso de f-strings e performance
+
+# OPCIONAL: Se quiser usar auto-atualização com NVD via API (não usado no código atual)
+requests>=2.31.0
+
+# OPCIONAL: Caso queira lidar com arquivos JSON maiores ou muito complexos (melhora performance)
+orjson>=3.9.15
+
+# Se quiser "freezar" versões para ambientes controlados (ex: produção)
+# Pode incluir hashes com pip-tools ou poetry
