@@ -1,0 +1,33 @@
+# Diretórios de cache do Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Arquivos de configuração locais (se aplicável)
+config_local.py
+nvd_data/
+
+
+# Dados ou arquivos temporários
+*.log
+*.tmp
+*.bak
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivo de fabricantes (se for local e não versionável)
+manuf
+
+# Arquivos de backup do VSCode ou editor
+*.code-workspace
+
+# Arquivos do VSCode
+.vscode/
