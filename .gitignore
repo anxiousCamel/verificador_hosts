@@ -37,6 +37,8 @@ config_local.py        # Arquivo customizado não versionado
 # =====================
 manuf                  # Tabela OUI local
 /nvd_data/              # Diretório com os arquivos NVD (.json, .gz)
+base_cves_cache*       # Cache em pickle (ex: base_cves_cache.pkl)
+auditoria_hosts*       # Resultados da auditoria de hosts
 
 # =====================
 # Ignorar pastas e configs do VSCode

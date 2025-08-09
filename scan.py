@@ -2,251 +2,431 @@
 # scan.py
 
 ## Descrição
-Este módulo contém todas as funções responsáveis por escanear hosts e portas em uma rede local.
+Scanner de hosts e portas com:
+- Ping + TTL + latência
+- Hostname (opcional por ENV)
+- MAC por ARP e fabricante (via dicionário `fabricantes`)
+- Detecção de SO via TTL
+- Portscan com banner grabbing usando **probes por protocolo**
+- Limite global de sockets (semáforo) para não travar a máquina
+- Montagem do dicionário final do host (compatível com __main__.py/relatorio.py)
 
-### Funcionalidades:
-- Ping de IPs com extração de TTL e latência
-- Resolução de hostname
-- Obtenção de MAC address via ARP
-- Identificação de fabricante via OUI
-- Detecção do sistema operacional com base no TTL
-- Teste de portas comuns (com banner grabbing)
-- Verificação completa de um host, incluindo vulnerabilidades via CVE
+Cada função faz UMA coisa. Comentários em Markdown/Doxygen.
 
 ## Autor
 Luiz
-
-## Dependências
-- socket
-- subprocess
-- platform
-- concurrent.futures
-- re
-- cve (interno)
 """
 
-import socket
-import subprocess
-import platform
-from concurrent.futures import ThreadPoolExecutor
+from __future__ import annotations
+
+import os
 import re
+import ssl
+import socket
+import platform
+import subprocess
+from typing import Dict, List, Tuple, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
+import threading
 
-from config import auto_configurar
-from cve import verificar_vulnerabilidades_em_banners
-from cve import carregar_base_local_cves
+# ============================
+# Configs por ENV
+# ============================
+
+MAX_SOCKETS = int(os.getenv("VH_MAX_SOCKETS", "256"))   # limite global de sockets simultâneos
+RESOLVE_HOSTNAME = os.getenv("VH_RESOLVE_HOSTNAME", "1") == "1"
+
+SOCKET_SEM = threading.Semaphore(MAX_SOCKETS)
 
 
-# ==== Listas de Portas ====
+@contextmanager
+def open_conn(ip: str, porta: int, timeout: float):
+    """
+    Context manager para abrir conexão respeitando o limite global de sockets.
+    Garante liberação do semáforo e fechamento do socket.
+    """
+    SOCKET_SEM.acquire()
+    s = None
+    try:
+        s = socket.create_connection((ip, porta), timeout=timeout)
+        yield s
+    finally:
+        try:
+            if s:
+                s.close()
+        finally:
+            SOCKET_SEM.release()
 
-#: Portas comuns a serem escaneadas em cada host
-PORTAS_COMUNS = [
-    22, 23, 3389, 5900, 5985, 5986, 10000, 873, 111, 6000,
-    80, 443, 8080, 8443, 8888, 5000, 5173, 4200, 7000, 8000, 8008,
-    9000, 9443, 3000, 3001, 4000, 4001, 9090, 8086, 5601, 16101, 5353,
-    1433, 1521, 3306, 5432, 27017, 6379, 11211, 9200, 9300, 2181, 9092,
+
+# ============================
+# Portas (blocos lógicos)
+# ============================
+
+# Portas críticas (para destaque no relatório, se desejar)
+PORTAS_CRITICAS = [
+    # Administração remota sensível
+    22,      # SSH
+    23,      # Telnet
+    3389,    # RDP
+    5900,    # VNC
+    5985, 5986,  # WinRM
+    # Compartilhamento e RPC
     135, 137, 138, 139, 445,
-    161, 162, 199, 3702, 5355,
-    515, 631, 9100, 16101, 1900,
-    88, 389, 636, 3268, 3269,
-    20, 21, 69, 25, 587, 110, 995, 143, 993
 ]
 
-#: Subconjunto de portas consideradas críticas ou sensíveis
-PORTAS_CRITICAS = {
-    23, 135, 137, 138, 139, 445,
-    1433, 1521, 3306, 5432, 27017,
-    3389, 5900, 6379, 11211, 9200,
-    389, 21, 69, 5985, 5986
+# Portas comuns (varredura padrão)
+PORTAS_COMUNS = sorted(set([
+    # Administração
+    22, 23, 3389, 5900, 5985, 5986, 10000,
+    # Web
+    80, 443, 8080, 8443, 8888, 8000,
+    # Bancos de dados
+    1433, 1521, 3306, 5432,
+    # Compartilhamento de arquivos e RPC
+    135, 137, 138, 139, 445,
+    # Email
+    25, 465, 587, 110, 995, 143, 993,
+    # Infraestrutura e diversos
+    3000, 3001, 4000, 4001, 6379, 11211, 27017,
+    # Impressão e dispositivos
+    515, 631, 9100,
+]))
+
+
+# ============================
+# Probes por protocolo
+# ============================
+
+SERVICE_PROBES: Dict[int, bytes] = {
+    # HTTP (HEAD simples)
+    80:   b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+    8080: b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+    8000: b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+    8888: b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+    8443: b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+    # HTTPS/TLS direto (tratado à parte quando 443)
+    443:  b"",
+    # SSH: banner vem do servidor
+    22:   b"\r\n",
+    # SMTP
+    25:   b"EHLO example.com\r\n",
+    587:  b"EHLO example.com\r\n",
+    465:  b"",  # SMTPS (TLS direto)
+    # POP3
+    110:  b"USER test\r\n",
+    995:  b"",  # POP3S (TLS direto)
+    # IMAP
+    143:  b". CAPABILITY\r\n",
+    993:  b"",  # IMAPS (TLS direto)
+    # FTP
+    21:   b"FEAT\r\n",
+    990:  b"",  # FTPS (TLS direto)
 }
 
 
-def ping_host(ip):
-    """
-    Executa um ping no IP informado e retorna status, TTL e latência estimada.
+# ============================
+# Helpers (uma função = uma coisa)
+# ============================
 
-    Parâmetros:
-        ip (str): Endereço IP.
+def _clean_banner(s: str) -> str:
+    """Normaliza banner para uma linha curta."""
+    if not s:
+        return "-"
+    s = s.replace("\r", " ").replace("\n", " ").strip()
+    s = s.replace(";", ",")
+    return s if s else "-"
 
-    Retorna:
-        (bool, int, float): (status, ttl, latência)
-    """
-    sistema = platform.system().lower()
-    param = "-n" if sistema == "windows" else "-c"
-    timeout_flag = "-w" if sistema == "windows" else "-W"
 
+def _recv_small(sock: socket.socket, chunk_size: int = 2048) -> bytes:
+    """Recebe um bloco pequeno sem bloquear por muito tempo."""
     try:
-        output = subprocess.check_output(
-            ["ping", param, "1", timeout_flag, "1", ip],
-            stderr=subprocess.DEVNULL,
-            universal_newlines=True
-        )
-
-        ttl_match = re.search(r'(ttl=|TTL=)(\d+)', output)
-        ttl = int(ttl_match.group(2)) if ttl_match else -1
-
-        time_match = re.search(r'(tempo|time)[=<]?\s*(\d+(?:\.\d+)?)\s*ms', output, re.IGNORECASE)
-        latency = float(time_match.group(2)) if time_match else -1
-
-        return True, ttl, latency
-    except:
-        return False, -1, -1
+        return sock.recv(chunk_size)
+    except Exception:
+        return b""
 
 
-def detectar_so_por_ttl(ttl):
-    """
-    Detecta o sistema operacional estimado com base no valor TTL.
-
-    Parâmetros:
-        ttl (int): Time-to-Live do pacote.
-
-    Retorna:
-        str: SO estimado (colorido com tags do Rich).
-    """
-    if ttl <= 64:
-        return "[green]Linux/Unix[/green]"
-    elif ttl <= 128:
-        return "[blue]Windows[/blue]"
-    elif ttl <= 255:
-        return "[magenta]Cisco/Outro[/magenta]"
-    return "Desconhecido"
-
-
-def get_mac(ip):
-    """
-    Obtém o endereço MAC do IP via comando ARP local.
-
-    Parâmetros:
-        ip (str): Endereço IP.
-
-    Retorna:
-        str: MAC formatado ou "MAC N/D"
-    """
+def _banner_https(ip: str, timeout: float) -> str:
+    """Handshake TLS + tentativa de HEAD em :443."""
     try:
-        output = subprocess.check_output(['arp', '-a', ip], text=True)
-        for linha in output.splitlines():
-            if ip in linha:
-                partes = linha.split()
-                for p in partes:
-                    if '-' in p and len(p) == 17:
-                        return p.upper().replace('-', ':')
-    except:
-        pass
-    return "MAC N/D"
-
-
-def resolve_hostname(ip):
-    """
-    Resolve o hostname associado ao IP.
-
-    Parâmetros:
-        ip (str): Endereço IP.
-
-    Retorna:
-        str: Hostname ou "Nome N/D"
-    """
-    try:
-        return socket.gethostbyaddr(ip)[0]
-    except:
-        return "Nome N/D"
-
-
-def banner_grabbing(ip, porta, timeout=1.5):
-    """
-    Coleta o banner da aplicação que responde em determinada porta.
-
-    Parâmetros:
-        ip (str): Endereço IP.
-        porta (int): Número da porta.
-        timeout (float): Tempo máximo de espera.
-
-    Retorna:
-        str: Banner limpo ou "-"
-    """
-    try:
-        with socket.create_connection((ip, porta), timeout=timeout) as s:
-            s.settimeout(timeout)
-            banner = s.recv(1024).decode(errors="ignore").strip()
-            banner = banner.replace("\n", " ").replace("\r", " ").replace(";", ",")
-            return banner if banner else "-"
-    except:
+        with open_conn(ip, 443, timeout) as raw:
+            ctx = ssl.create_default_context()
+            with ctx.wrap_socket(raw, server_hostname=ip) as tls:
+                tls.settimeout(timeout)
+                try:
+                    req = b"HEAD / HTTP/1.0\r\nHost: " + ip.encode() + b"\r\n\r\n"
+                    tls.sendall(req)
+                    data = _recv_small(tls)
+                    return _clean_banner(data.decode(errors="ignore"))
+                except Exception:
+                    data = _recv_small(tls)
+                    return _clean_banner(data.decode(errors="ignore"))
+    except Exception:
         return "-"
 
 
-def testar_portas(ip, portas, max_workers, timeout):
-    """
-    Testa várias portas em paralelo em um IP e realiza banner grabbing nas abertas.
-
-    Parâmetros:
-        ip (str): IP alvo.
-        portas (list): Lista de portas a testar.
-        max_workers (int): Nº máximo de threads.
-        timeout (float): Timeout de conexão.
-
-    Retorna:
-        list: Lista de tuplas (porta, banner)
-    """
-    def tentar(porta):
+def banner_grabbing(ip: str, porta: int, timeout: float = 2.5) -> str:
+    """Obtém banner usando probes específicas por porta (com limite global de sockets)."""
+    if porta in (443, 465, 993, 995, 990):
+        if porta == 443:
+            return _banner_https(ip, timeout)
         try:
-            with socket.create_connection((ip, porta), timeout=timeout):
-                banner = banner_grabbing(ip, porta, timeout)
-                return (porta, banner)
-        except:
-            return None
+            with open_conn(ip, porta, timeout) as raw:
+                ctx = ssl.create_default_context()
+                with ctx.wrap_socket(raw, server_hostname=ip) as tls:
+                    tls.settimeout(timeout)
+                    data = _recv_small(tls)
+                    return _clean_banner(data.decode(errors="ignore"))
+        except Exception:
+            return "-"
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        resultados = executor.map(tentar, portas)
-    return [res for res in resultados if res]
+    probe = SERVICE_PROBES.get(porta)
+    try:
+        with open_conn(ip, porta, timeout) as s:
+            s.settimeout(timeout)
+            if probe:
+                try:
+                    s.sendall(probe)
+                except Exception:
+                    pass
+            data = _recv_small(s)
+            return _clean_banner(data.decode(errors="ignore"))
+    except Exception:
+        return "-"
 
 
-def verificar_host(ip, fabricantes, max_workers_portas, timeout_socket, base_cves):
+def re_search_i(pattern: str, text: str) -> Optional[str]:
+    """Regex case-insensitive, retorna primeiro grupo ou None."""
+    m = re.search(pattern, text or "", flags=re.IGNORECASE)
+    return m.group(1) if m else None
+
+
+def parse_http_server(banner: str) -> str:
+    """Extrai 'Server: ...' se existir (útil para casar produto/versão)."""
+    if not banner or banner == "-":
+        return banner
+    v = re_search_i(r"\bserver:\s*([^\r\n]+)", banner)
+    return _clean_banner(f"Server: {v}") if v else banner
+
+
+# ============================
+# Ping / TTL / Latência / Hostname / MAC / SO
+# ============================
+
+def _ping_args(ip: str) -> List[str]:
+    """Monta args do ping conforme SO."""
+    if platform.system().lower().startswith("win"):
+        return ["ping", "-n", "1", "-w", "1200", ip]
+    else:
+        return ["ping", "-c", "1", "-W", "1", ip]
+
+
+def ping_host(ip: str) -> Tuple[bool, int, float]:
     """
-    Realiza varredura completa de um host (ping, nome, MAC, portas, banners e CVEs).
-
-    Parâmetros:
-        ip (str): Endereço IP do alvo.
-        fabricantes (dict): Dicionário de prefixos MAC → fabricante.
-        max_workers_portas (int): Threads paralelas para scan de portas.
-        timeout_socket (float): Timeout de conexão socket.
-        base_cves (dict): Dicionário CVE {id: descrição}
-
-    Retorna:
-        dict: Dados do host analisado.
+    Executa 1 ping e tenta extrair TTL e latência (ms).
+    Retorna (online, ttl, lat_ms) — ttl=-1/lat=-1 se não obtido.
     """
-    from scan import ping_host, resolve_hostname, get_mac, detectar_so_por_ttl, testar_portas, PORTAS_COMUNS
+    ttl, lat = -1, -1.0
+    try:
+        p = subprocess.run(_ping_args(ip), capture_output=True, text=True, timeout=3)
+        out = p.stdout + p.stderr
+        online = p.returncode == 0 or ("bytes=" in out.lower() or "ttl=" in out.lower())
+        if not online:
+            return False, -1, -1.0
 
-    status, ttl, latencia = ping_host(ip)
+        # Latência
+        mlat = re_search_i(r"time[=<]\s*([0-9]+(?:\.[0-9]+)?)\s*ms", out) or \
+               re_search_i(r"tempo[=<]\s*([0-9]+(?:\.[0-9]+)?)\s*ms", out)
+        if mlat:
+            lat = float(mlat)
 
-    # Host OFFLINE
-    if not status:
+        # TTL
+        mttl = re_search_i(r"ttl[=\s]\s*([0-9]+)", out)
+        if mttl:
+            ttl = int(mttl)
+
+        return True, ttl, lat
+    except Exception:
+        return False, -1, -1.0
+
+
+def resolver_hostname(ip: str) -> str:
+    """Resolve hostname via DNS inverso (best-effort)."""
+    try:
+        return socket.gethostbyaddr(ip)[0]
+    except Exception:
+        return "N/D"
+
+
+def obter_mac_via_arp(ip: str) -> str:
+    """
+    Tenta extrair MAC da tabela ARP.
+    Windows: `arp -a`
+    Linux:   `ip neigh` (fallback `arp -n`)
+    """
+    try:
+        if platform.system().lower().startswith("win"):
+            p = subprocess.run(["arp", "-a", ip], capture_output=True, text=True, timeout=2)
+            out = p.stdout
+            mm = re.search(rf"{re.escape(ip)}\s+([0-9a-fA-F\-\:]+)", out)
+            if mm:
+                mac = mm.group(1).replace("-", ":").lower()
+                return mac
+        else:
+            p = subprocess.run(["ip", "neigh", "show", ip], capture_output=True, text=True, timeout=2)
+            out = p.stdout
+            mm = re.search(r"lladdr\s+([0-9a-fA-F:]{17})", out)
+            if mm:
+                return mm.group(1).lower()
+            # fallback
+            p = subprocess.run(["arp", "-n", ip], capture_output=True, text=True, timeout=2)
+            out = p.stdout
+            mm = re.search(r"([0-9a-fA-F:]{17})", out)
+            if mm:
+                return mm.group(1).lower()
+    except Exception:
+        pass
+    return "N/D"
+
+
+def detectar_so_por_ttl(ttl: int) -> str:
+    """
+    Heurística simples:
+    - ~64  => Linux/Unix-like
+    - ~128 => Windows
+    - ~255 => Cisco/NX-OS/alguns appliances
+    """
+    if ttl < 0:
+        return "N/D"
+    if ttl <= 70:
+        return "Linux/Unix"
+    if ttl <= 140:
+        return "Windows"
+    if ttl <= 255:
+        return "Cisco/Appliance"
+    return "Desconhecido"
+
+
+# ============================
+# Portscan paralelo (usa probes)
+# ============================
+
+def _testar_porta(ip: str, porta: int, timeout: float) -> Tuple[int, str]:
+    """Conecta e coleta banner se aberto. Retorna (porta, banner|'-')."""
+    # Testa apenas a conexão (controlada)
+    try:
+        with open_conn(ip, porta, timeout):
+            pass  # conectou -> aberta
+    except Exception:
+        return (porta, "-")
+
+    # Coleta banner (nova conexão controlada)
+    banner = banner_grabbing(ip, porta, timeout=timeout)
+    if porta in (80, 8080, 8000, 8888, 8443, 443):
+        banner = parse_http_server(banner)
+    return (porta, banner if banner else "-")
+
+
+def testar_portas(ip: str, portas: List[int], timeout: float = 2.5, workers: int = 64) -> List[str]:
+    """
+    Retorna lista **somente** das portas abertas no formato "porta:banner".
+    """
+    resultados: List[str] = []
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futuros = [ex.submit(_testar_porta, ip, p, timeout) for p in portas]
+        for fut in as_completed(futuros):
+            porta, banner = fut.result()
+            if banner and banner != "-":
+                resultados.append(f"{porta}:{banner}")
+    # ordena por porta
+    try:
+        resultados.sort(key=lambda x: int(x.split(":", 1)[0]))
+    except Exception:
+        resultados.sort()
+    return resultados
+
+
+# ============================
+# Função principal por host (chamada pelo __main__.py)
+# ============================
+
+def _fabricante_por_mac(mac: str, fabricantes: Dict[str, str]) -> str:
+    """Retorna fabricante pelo OUI (3 primeiros octetos)."""
+    if not mac or mac == "N/D":
+        return "N/D"
+    oui = mac.upper().replace(":", "")[:6]
+    return fabricantes.get(oui, "N/D")
+
+
+def verificar_host(
+    ip: str,
+    fabricantes: Dict[str, str],
+    max_workers_portas: int,
+    timeout_socket: float,
+    base_cves
+) -> Dict[str, object]:
+    """
+    ## verificar_host
+    - Ping + TTL + latência
+    - Hostname (opcional por ENV)
+    - MAC e fabricante
+    - SO (por TTL)
+    - Portscan + banners
+    - Vulnerabilidades (usa cve.verificar_vulnerabilidades_em_banners)
+
+    Retorno (campos compatíveis com relatorio.py):
+    {
+        "ip": str,
+        "status": "ONLINE"/"OFFLINE",
+        "nome": str,
+        "mac": str,
+        "fabricante": str,
+        "so": str,
+        "portas": List[str],
+        "banners": List[str],
+        "vulnerabilidades": List[str],
+        "latencia": float
+    }
+    """
+    online, ttl, latencia = ping_host(ip)
+    if not online:
         return {
             "ip": ip,
             "status": "OFFLINE",
-            "nome": "-",
-            "mac": "-",
-            "fabricante": "-",
-            "so": "-",
+            "nome": "N/D",
+            "mac": "N/D",
+            "fabricante": "N/D",
+            "so": "N/D",
             "portas": [],
             "banners": [],
             "vulnerabilidades": [],
-            "latencia": -1
+            "latencia": -1.0,
         }
 
-    # Host ONLINE
-    nome = resolve_hostname(ip)
-    mac = get_mac(ip)
+    nome = resolver_hostname(ip) if RESOLVE_HOSTNAME else "N/D"
+    mac = obter_mac_via_arp(ip)
+    fabricante = _fabricante_por_mac(mac, fabricantes)
     so = detectar_so_por_ttl(ttl)
 
-    if mac != "MAC N/D":
-        prefixo = ":".join(mac.split(":")[:3]).upper()
-        fabricante = fabricantes.get(prefixo, "Fabricante N/D")
-    else:
-        fabricante = "Fabricante N/D"
+    # Portscan
+    banners_abertas = testar_portas(
+        ip,
+        PORTAS_COMUNS,
+        timeout=float(timeout_socket),
+        workers=int(max_workers_portas),
+    )
+    portas = [b.split(":", 1)[0] for b in banners_abertas]
+    banners = banners_abertas[:]  # já no formato "porta:banner"
 
-    portas_banners = testar_portas(ip, PORTAS_COMUNS, max_workers_portas, timeout_socket)
-    portas = [str(p) for p, _ in portas_banners]
-    banners = [f"{p}:{b}" for p, b in portas_banners]
-
-    vulnerabilidades = verificar_vulnerabilidades_em_banners([b for _, b in portas_banners], base_cves)
+    # Vulnerabilidades (usa cve.verificar_vulnerabilidades_em_banners; base_cves é ignorado na nova versão)
+    try:
+        from cve import verificar_vulnerabilidades_em_banners
+        confirmadas, suspeitas = verificar_vulnerabilidades_em_banners(
+            banners, base_cves, detalhado=True
+        )
+        vulns = [*confirmadas, *[f"{cve} (suspeita)" for cve in suspeitas]]
+    except Exception:
+        vulns = []
 
     return {
         "ip": ip,
@@ -257,6 +437,6 @@ def verificar_host(ip, fabricantes, max_workers_portas, timeout_socket, base_cve
         "so": so,
         "portas": portas,
         "banners": banners,
-        "vulnerabilidades": vulnerabilidades,
-        "latencia": latencia
+        "vulnerabilidades": vulns,
+        "latencia": latencia,
     }
