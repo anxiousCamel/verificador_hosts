@@ -51,3 +51,5 @@ auditoria_hosts*       # Resultados da auditoria de hosts
 # =====================
 .DS_Store              # MacOS
 Thumbs.db              # Windows
+
+*csv
