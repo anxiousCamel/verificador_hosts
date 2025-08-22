@@ -20,51 +20,75 @@ Luiz
 import os
 from rich.console import Console
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 console = Console()
+
+def _detectar_encoding(caminho: str) -> str:
+    """Detecta BOM rápido: UTF-16 LE/BE, UTF-8; fallback utf-8."""
+    try:
+        with open(caminho, "rb") as fb:
+            cab = fb.read(4)
+        if cab.startswith(b"\xff\xfe"):
+            return "utf-16-le"
+        if cab.startswith(b"\xfe\xff"):
+            return "utf-16-be"
+        if cab.startswith(b"\xef\xbb\xbf"):
+            return "utf-8-sig"
+    except Exception:
+        pass
+    return "utf-8"  # fallback seguro
 
 
 def carregar_tabela_oui(path='manuf'):
     """
-    Carrega a tabela OUI (Wireshark/Nmap) e indexa por duas chaves:
-    - 'FC52CE' (sem separadores)
-    - 'FC:52:CE' (com dois-pontos)
+    Carrega tabela OUI (Wireshark/Nmap) e indexa por:
+    - FC52CE / FC:52:CE (3 bytes)
+    - e também 4/5 bytes quando existirem no arquivo.
     """
-    fabricantes = {}
+    if not os.path.isabs(path):
+        path = os.path.join(BASE_DIR, path)
 
+    fabricantes = {}
     if not os.path.exists(path):
         console.print(f"[red]Arquivo '{path}' não encontrado.[/red]")
         return fabricantes
 
-    # Tente latin-1; se falhar, caia para utf-8
-    for enc in ("latin-1", "utf-8", "utf-16"):
-        try:
-            with open(path, encoding=enc, errors="ignore") as f:
-                for linha in f:
-                    if linha.strip().startswith('#') or not linha.strip():
-                        continue
+    enc = _detectar_encoding(path)
 
-                    partes = linha.strip().split()
+    try:
+        with open(path, "r", encoding=enc, errors="strict") as f:
+            for linha in f:
+                s = linha.strip()
+                if not s or s.startswith("#"):
+                    continue
+
+                # Divide por tab; formato Wireshark: "OUI<TAB>Short<TAB>Long ..."
+                partes = s.split("\t")
+                if len(partes) < 2:
+                    # fallback: espaço(s) quando não houver tab
+                    partes = s.split()
                     if len(partes) < 2:
                         continue
 
-                    # primeira coluna é o prefixo (pode vir com '-' ou ':')
-                    raw = partes[0].upper()
-                    raw = raw.replace('-', ':').strip()
-                    # normaliza
-                    oui_colon = ":".join(raw.split(":")[:3])                  # FC:52:CE
-                    oui_plain = oui_colon.replace(":", "")                    # FC52CE
-                    fabricante = " ".join(partes[1:]).strip()
+                raw = partes[0].upper().replace("-", ":")
+                grupos = [g.strip() for g in raw.split(":") if g.strip()]
+                if len(grupos) < 3:
+                    continue
 
-                    if oui_plain:
-                        fabricantes[oui_plain] = fabricante
-                    if oui_colon:
-                        fabricantes[oui_colon] = fabricante
-            break
-        except Exception:
-            continue
+                nome = " ".join(partes[1:]).strip()
+                # chaves de 3, 4 e 5 bytes
+                for nbytes in (3, 4, 5):
+                    if len(grupos) >= nbytes:
+                        oui_colon = ":".join(grupos[:nbytes])               # FC:52:CE
+                        oui_plain = oui_colon.replace(":", "")               # FC52CE
+                        fabricantes[oui_colon] = nome
+                        fabricantes[oui_plain] = nome
+    except Exception as e:
+        console.print(f"[red]Falha ao ler '{path}' ({enc}): {e}[/red]")
 
+    if not fabricantes:
+        console.print(f"[yellow]Aviso: tabela OUI vazia após ler {path} ({enc}).[/yellow]")
     return fabricantes
-
 
 
 def solicitar_dados_input():

@@ -350,13 +350,24 @@ def testar_portas(ip: str, portas: List[int], timeout: float = 2.5, workers: int
 # Função principal por host (chamada pelo __main__.py)
 # ============================
 
+import re
+
 def _fabricante_por_mac(mac: str, fabricantes: Dict[str, str]) -> str:
-    """Retorna fabricante pelo OUI (tenta sem e com ':')."""
+    """Retorna fabricante tentando OUI de 3, 4 e 5 bytes (plain e com ':')."""
     if not mac or mac in ("N/D", "MAC N/D", "-"):
         return "N/D"
-    oui_plain = mac.upper().replace("-", "").replace(":", "")[:6]   # FC52CE
-    oui_colon = ":".join([oui_plain[i:i+2] for i in range(0, 6, 2)])  # FC:52:CE
-    return fabricantes.get(oui_plain) or fabricantes.get(oui_colon) or "N/D"
+    hexs = re.sub(r"[^0-9A-Fa-f]", "", mac).upper()   # ex.: 80854495F30E
+    if len(hexs) < 6:
+        return "N/D"
+    keys = []
+    for n in (6, 8, 10):  # 3,4,5 bytes
+        if len(hexs) >= n:
+            plain = hexs[:n]
+            colon = ':'.join(plain[i:i+2] for i in range(0, n, 2))
+            if plain in fabricantes: return fabricantes[plain]
+            if colon in fabricantes: return fabricantes[colon]
+    return 'N/D'
+
 
 
 def verificar_host(

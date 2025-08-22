@@ -1,0 +1,255 @@
+IP;Status;Hostname;MAC;Fabricante;SO;Portas;Banners;Vulnerabilidades;Latência (ms)
+10.101.6.6;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.2;ONLINE;N/D;80:85:44:95:f3:0e;N/D;Linux/Unix;;;;15.0
+10.101.6.7;ONLINE;N/D;80:85:44:95:f3:36;N/D;Linux/Unix;;;;1.0
+10.101.6.4;ONLINE;N/D;80:85:44:95:f3:2a;N/D;Linux/Unix;;;;2.0
+10.101.6.5;ONLINE;N/D;80:85:44:95:f2:7e;N/D;Linux/Unix;;;;34.0
+10.101.6.3;ONLINE;N/D;80:85:44:95:f2:10;N/D;Linux/Unix;;;;3.0
+10.101.6.9;ONLINE;N/D;80:85:44:95:f2:60;N/D;Linux/Unix;;;;1.0
+10.101.6.8;ONLINE;N/D;fc:52:ce:85:a3:f7;N/D;Cisco/Appliance;80;80:HTTP/1.1 301 Moved Permanently  Location: https://10.101.6.8:443  Connection: close  Cache-Control: no-cache, no-store, must-revalidate  Pragma: no-cache  Expires: 0;;5.0
+10.101.6.10;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.1;ONLINE;N/D;84:39:8f:f6:22:23;N/D;Cisco/Appliance;;;;12.0
+10.101.6.18;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.19;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.17;ONLINE;KM776CF5;00:17:c8:bd:00:73;N/D;Linux/Unix;80;80:Server: KM-MFP-http/V0.0.1  Content-Type: text/html, charset=UTF-8  ETag:   Cache-Control: no-cache  Pragma: no-cache  Expires: Thu, 01 Jan 1970 00:00:00 GMT  Set-Cookie: rtl=0, path=/,;;1.0
+10.101.6.15;ONLINE;N/D;80:85:44:95:f2:be;N/D;Linux/Unix;;;;1.0
+10.101.6.12;ONLINE;N/D;80:85:44:95:f3:6f;N/D;Linux/Unix;;;;8.0
+10.101.6.14;ONLINE;KMB8A3AD;00:17:c8:b8:a3:ad;N/D;Cisco/Appliance;80;80:Server: KM-MFP-http/V0.0.1  Content-Type: text/html, charset=UTF-8  ETag:   Cache-Control: no-cache  Pragma: no-cache  Expires: Thu, 01 Jan 1970 00:00:00 GMT  Set-Cookie: rtl=0, path=/,;;1.0
+10.101.6.20;ONLINE;N/D;80:85:44:95:f3:68;N/D;Linux/Unix;;;;1.0
+10.101.6.13;ONLINE;N/D;00:c0:ca:b4:48:fc;N/D;Windows;23;23:;;22.0
+10.101.6.11;ONLINE;ECM001-L10;00:be:43:c8:57:6e;N/D;Windows;;;;1.0
+10.101.6.16;ONLINE;ATEND-L10;00:17:c8:7d:88:cb;N/D;Cisco/Appliance;80;80:Server: KM-MFP-http/V0.0.1  Content-Type: text/html, charset=UTF-8  ETag:   Cache-Control: no-cache  Pragma: no-cache  Expires: Thu, 01 Jan 1970 00:00:00 GMT  Set-Cookie: rtl=0, path=/,;;1.0
+10.101.6.21;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.24;ONLINE;N/D;00:0e:de:ec:00:ac;N/D;Linux/Unix;22, 23, 80;22:SSH-2.0-dropbear_0.52, 23:, 80:HTTP/1.0 200 OK  Content-type: text/html  Date: Thu, 01 Jan 1970 13:08:53 GMT  Connection: close  Last-Modified: Mon, 14 Sep 2015 18:01:08 GMT  Content-length: 162;;3.0
+10.101.6.23;ONLINE;N/D;00:1d:5b:02:21:42;N/D;Linux/Unix;22, 23, 80;22:SSH-2.0-dropbear_0.52, 23:, 80:HTTP/1.0 200 OK  Content-type: text/html  Date: Fri, 02 Jan 1970 15:15:28 GMT  Connection: close  Last-Modified: Mon, 14 Sep 2015 18:01:08 GMT  Content-length: 162;;1.0
+10.101.6.30;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.25;ONLINE;N/D;9c:93:4e:a7:81:05;N/D;Linux/Unix;80;80:Server: Apache  X-Frame-Options: SAMEORIGIN  Cache-Control: max-age=0, no-store  X-UA-Compatible: IE=edge  Connection: close  Content-Type: text/html, charset=UTF-8;;1.0
+10.101.6.28;ONLINE;N/D;80:85:44:95:f3:5e;N/D;Linux/Unix;;;;1.0
+10.101.6.26;ONLINE;N/D;80:85:44:95:f2:c8;N/D;Linux/Unix;;;;2.0
+10.101.6.27;ONLINE;N/D;80:85:44:95:f3:96;N/D;Linux/Unix;;;;1.0
+10.101.6.22;ONLINE;N/D;80:85:44:95:f2:6a;N/D;Linux/Unix;;;;5.0
+10.101.6.29;ONLINE;REC011-L10;f0:4d:a2:e1:d1:17;N/D;Windows;;;;1.0
+10.101.6.38;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.33;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.35;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.37;ONLINE;N/D;80:85:44:95:f2:ce;N/D;Linux/Unix;;;;1.0
+10.101.6.32;ONLINE;N/D;80:85:44:95:f2:a0;N/D;Linux/Unix;;;;1.0
+10.101.6.36;ONLINE;MTB002-L10;f0:4d:a2:e1:d0:5a;N/D;Windows;;;;1.0
+10.101.6.31;ONLINE;SAC001-L10;f0:4d:a2:e2:50:ac;N/D;Windows;;;;2.0
+10.101.6.34;ONLINE;GER006-L10;f0:4d:a2:e2:4d:5b;N/D;Windows;;;;2.0
+10.101.6.39;ONLINE;REC010-L06;f0:4d:a2:e2:50:8e;N/D;Windows;;;;1.0
+10.101.6.40;ONLINE;MTB003-L10;f0:4d:a2:e2:50:aa;N/D;Windows;;;;1.0
+10.101.6.43;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.41;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.48;ONLINE;N/D;58:10:8c:9f:f1:da;N/D;Linux/Unix;;;;3.0
+10.101.6.44;ONLINE;N/D;48:51:cf:bb:7f:d0;N/D;Linux/Unix;80;"80:HTTP/1.1 200 OK  CONNECTION: close  Date: Fri, 22 Aug 2025 11:31:11 GMT  Last-Modified: Sat, 10 Jul 2021 07:12:26 GMT  Etag: ""1625901146:bf8""  CONTENT-LENGTH: 3064  P3P: CP=CAO PSA OUR  X-Frame-Options: SAMEORIGIN  X-XSS-Protection: 1,mode=block  Content-Security-Policy: script-src 'self' 'unsafe-inline' 'unsafe-eval'  X-Content-Type-Options: nosniff  CONTENT-TYPE: text/html    <!DOCTYPE HTML> <html> <head> <meta http-equiv=""X-UA-Compatible"" content=""IE=edge""> <meta charset=""UTF-8""> <title>Intelbras</title> <link href=""./baseProj/images/favicon.ico"" type=""image/x-icon"" rel=""shortcut icon""> <script src=""ext/ext-all.js""></script> <script type=""text/javascript"" src=""./projectPath.js""></script> <script type=""text/javascript"" src=""/app/libs/require.js""></script> <script type=""text/javascript"" src=""/app/jsCore/require-config.js""></script> <script type=""text/javascript"">Ext.onReady(function () {             //启用缓存             Ext.Loader.setConfig({                 ""disableCaching"": true,                 ""paths"":{                     ""basePath"": BASEURL, //配置基础项目的文件路径                     ""projectPath"": PROJECT_URL //配置定制项目的文件路径                 }             }),              //定义项目的加载路径             var basePath = Ext.Loader.getPath('basePath'),                 projectPath = Ext.Loader.getPath('projectPath'),              //设置类的地址路径             Ext.Loader.setPat";;7.0
+10.101.6.47;ONLINE;N/D;58:10:8c:9f:f1:db;N/D;Linux/Unix;;;;1.0
+10.101.6.46;ONLINE;N/D;98:2a:0a:3d:fe:af;N/D;Linux/Unix;80;"80:HTTP/1.1 200 OK  CONNECTION: keep-alive  Date: Fri, 22 Aug 2025 11:31:29 GMT  Last-Modified: Thu, 22 Feb 2024 06:50:18 GMT  Etag: ""1708584618:d6f""  CONTENT-LENGTH: 3439  P3P: CP=CAO PSA OUR  X-Frame-Options: SAMEORIGIN  X-XSS-Protection: 1,mode=block  Content-Security-Policy: script-src 'self' 'unsafe-inline' 'unsafe-eval'  X-Content-Type-Options: nosniff  CONTENT-TYPE: text/html    <!DOCTYPE HTML> <html> <head> <meta http-equiv=""X-UA-Compatible"" content=""IE=edge""> <meta charset=""UTF-8""> <title>Intelbras</title> <link href=""./baseProj/images/favicon.ico"" type=""image/x-icon"" rel=""shortcut icon""> <script src=""ext/ext-all.js""></script> <script type=""text/javascript"" src=""./projectPath.js""></script> <script type=""text/javascript"" src=""/app/libs/require.js""></script> <script type=""text/javascript"" src=""/app/jsCore/require-config.js""></script> <script type=""text/javascript""> Ext.onReady(function () {             //启用缓存             Ext.Loader.setConfig({                 ""disableCaching"": false,                 ""paths"":{                     ""basePath"": BASEURL, //配置基础项目的文件路径                     ""projectPath"": PROJECT_URL //配置定制项目的文件路径                 }             }),              //定义项目的加载路径             var basePath = Ext.Loader.getPath('basePath'),                 projectPath = Ext.Loader.getPath('projectPath'),              //设置类的地址路径             Ext.Loader";;3.0
+10.101.6.45;ONLINE;N/D;98:2a:0a:3d:fe:b1;N/D;Linux/Unix;80;"80:HTTP/1.1 200 OK  CONNECTION: keep-alive  Date: Fri, 22 Aug 2025 11:31:26 GMT  Last-Modified: Thu, 22 Feb 2024 06:50:18 GMT  Etag: ""1708584618:d6f""  CONTENT-LENGTH: 3439  P3P: CP=CAO PSA OUR  X-Frame-Options: SAMEORIGIN  X-XSS-Protection: 1,mode=block  Content-Security-Policy: script-src 'self' 'unsafe-inline' 'unsafe-eval'  X-Content-Type-Options: nosniff  CONTENT-TYPE: text/html    <!DOCTYPE HTML> <html> <head> <meta http-equiv=""X-UA-Compatible"" content=""IE=edge""> <meta charset=""UTF-8""> <title>Intelbras</title> <link href=""./baseProj/images/favicon.ico"" type=""image/x-icon"" rel=""shortcut icon""> <script src=""ext/ext-all.js""></script> <script type=""text/javascript"" src=""./projectPath.js""></script> <script type=""text/javascript"" src=""/app/libs/require.js""></script> <script type=""text/javascript"" src=""/app/jsCore/require-config.js""></script> <script type=""text/javascript""> Ext.onReady(function () {             //启用缓存             Ext.Loader.setConfig({                 ""disableCaching"": false,                 ""paths"":{                     ""basePath"": BASEURL, //配置基础项目的文件路径                     ""projectPath"": PROJECT_URL //配置定制项目的文件路径                 }             }),              //定义项目的加载路径             var basePath = Ext.Loader.getPath('basePath'),                 projectPath = Ext.Loader.getPath('projectPath'),              //设置类的地址路径             Ext.Loader.setPath({                 ""jsCore"": ""app/jsCore"",                 'component': ""baseProj/js/component"",                 'js': 'baseProj/js',                 'plugin': 'app/plugin',                 'widget': 'baseProj/js/widget',                 'baseCls':'app/baseCls', 				'app': 'baseCls', //各个项目统一一个app                 'customJs': projectPath+'js', // 非基线项目引用的js路径                 'desktop':PROJ_MODULE.indexOf('desktop') != -1? projectPath+'js/desktop':basePath+'/js/desktop', //加载指定项目的Desktop.js                 'data': PROJ_MODULE.";;9.0
+10.101.6.50;ONLINE;N/D;58:10:8c:9f:f1:d4;N/D;Linux/Unix;;;;5.0
+10.101.6.49;ONLINE;N/D;98:2a:0a:3d:fe:b4;N/D;Linux/Unix;80;"80:HTTP/1.1 200 OK  CONNECTION: keep-alive  Date: Fri, 22 Aug 2025 11:31:28 GMT  Last-Modified: Thu, 22 Feb 2024 06:50:18 GMT  Etag: ""1708584618:d6f""  CONTENT-LENGTH: 3439  P3P: CP=CAO PSA OUR  X-Frame-Options: SAMEORIGIN  X-XSS-Protection: 1,mode=block  Content-Security-Policy: script-src 'self' 'unsafe-inline' 'unsafe-eval'  X-Content-Type-Options: nosniff  CONTENT-TYPE: text/html    <!DOCTYPE HTML> <html> <head> <meta http-equiv=""X-UA-Compatible"" content=""IE=edge""> <meta charset=""UTF-8""> <title>Intelbras</title> <link href=""./baseProj/images/favicon.ico"" type=""image/x-icon"" rel=""shortcut icon""> <script src=""ext/ext-all.js""></script> <script type=""text/javascript"" src=""./projectPath.js""></script> <script type=""text/javascript"" src=""/app/libs/require.js""></script> <script type=""text/javascript"" src=""/app/jsCore/require-config.js""></script> <script type=""text/javascript""> Ext.onReady(function () {             //启用缓存             Ext.Loader.setConfig({                 ""disableCaching"": false,                 ""paths"":{                     ""basePath"": BASEURL, //配置基础项目的文件路径                     ""projectPath"": PROJECT_URL //配置定制项目的文件路径                 }             }),              //定义项目的加载路径             var basePath = Ext.Loader.getPath('basePath'),                 projectPath = Ext.Loader.getPath('projectPath'),              //设置类的地址路径             Ext.Loader";;8.0
+10.101.6.42;ONLINE;TES002-L10;f0:4d:a2:e2:50:87;N/D;Windows;;;;1.0
+10.101.6.54;ONLINE;N/D;80:85:44:95:f2:80;N/D;Linux/Unix;;;;1.0
+10.101.6.53;ONLINE;N/D;80:85:44:95:f2:b0;N/D;Linux/Unix;;;;1.0
+10.101.6.55;ONLINE;N/D;80:85:44:95:f2:96;N/D;Linux/Unix;;;;1.0
+10.101.6.57;ONLINE;N/D;80:85:44:95:f2:72;N/D;Linux/Unix;;;;1.0
+10.101.6.51;ONLINE;N/D;06:41:90:52:af:99;N/D;Linux/Unix;;;;1.0
+10.101.6.56;ONLINE;N/D;80:85:44:f7:1d:ee;N/D;Linux/Unix;80;"80:HTTP/1.1 200 OK  CONNECTION: keep-alive  Date: Fri, 22 Aug 2025 11:32:13 GMT  Last-Modified: Tue, 14 Mar 2023 06:26:19 GMT  Etag: ""1678775179:d6f""  CONTENT-LENGTH: 3439  CACHE-CONTROL: max-age=0  P3P: CP=CAO PSA OUR  X-Frame-Options: SAMEORIGIN  X-XSS-Protection: 1,mode=block  Content-Security-Policy: script-src 'self' 'unsafe-inline' 'unsafe-eval'  X-Content-Type-Options: nosniff  CONTENT-TYPE: text/html    <!DOCTYPE HTML> <html> <head> <meta http-equiv=""X-UA-Compatible"" content=""IE=edge""> <meta charset=""UTF-8""> <title>Intelbras</title> <link href=""./baseProj/images/favicon.ico"" type=""image/x-icon"" rel=""shortcut icon""> <script src=""ext/ext-all.js""></script> <script type=""text/javascript"" src=""./projectPath.js""></script> <script type=""text/javascript"" src=""/app/libs/require.js""></script> <script type=""text/javascript"" src=""/app/jsCore/require-config.js""></script> <script type=""text/javascript""> Ext.onReady(function () {             //启用缓存             Ext.Loader.setConfig({                 ""disableCaching"": false,                 ""paths"":{                     ""basePath"": BASEURL, //配置基础项目的文件路径                     ""projectPath"": PROJECT_URL //配置定制项目的文件路径                 }             }),              //定义项目的加载路径             var basePath = Ext.Loader.getPath('basePath'),                 projectPath = Ext.Loader.getPath('projectPath'),              //设置类的地址路径             Ext.Loader.setPath({                 ""jsCore"": ""app/jsCore"",                 'component': ""baseProj/js/component"",                 'js': 'baseProj/js',                 'plugin': 'app/plugin',                 'widget': 'baseProj/js/widget',                 'baseCls':'app/baseCls', 				'app': 'baseCls', //各个项目统一一个app                 'customJs': projectPath+'js', // 非基线项目引用的js路径                 'desktop':PROJ_MODULE.indexOf('desktop') != -1? projectPath+'js/desktop':basePath+'/js/desktop', //加载指定项目的Desktop.js";;2.0
+10.101.6.58;ONLINE;N/D;80:85:44:95:f2:d7;N/D;Linux/Unix;;;;1.0
+10.101.6.52;ONLINE;POR001-L10;84:2b:2b:7f:2e:c0;N/D;Windows;;;;1.0
+10.101.6.60;ONLINE;210DNC00001018;94:c6:91:c1:88:9a;N/D;Windows;;;;1.0
+10.101.6.59;ONLINE;N/D;80:85:44:95:f2:aa;N/D;Linux/Unix;;;;2.0
+10.101.6.62;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.65;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.64;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.68;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.69;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.63;ONLINE;N/D;80:85:44:95:f3:4a;N/D;Linux/Unix;;;;1.0
+10.101.6.61;ONLINE;N/D;80:85:44:95:f2:cc;N/D;Linux/Unix;;;;1.0
+10.101.6.67;ONLINE;N/D;80:85:44:95:f2:86;N/D;Linux/Unix;;;;3.0
+10.101.6.66;ONLINE;N/D;80:85:44:95:f2:11;N/D;Linux/Unix;;;;9.0
+10.101.6.70;ONLINE;N/D;54:b5:6c:12:d3:a3;N/D;Linux/Unix;;;;5.0
+10.101.6.73;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.71;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.74;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.75;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.80;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.72;ONLINE;INF010-L10.goodbom.local;N/D;N/D;Windows;5900;5900:RFB 003.008;;1.0
+10.101.6.77;ONLINE;N/D;00:27:22:1a:eb:9c;N/D;Linux/Unix;22, 80;22:SSH-2.0-dropbear_2014.63    Cڗq?j1   curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,kexguess2@matt.ucc.asn.au   ssh-rsa,ssh-dss   gaes128-ctr,3des-ctr,aes256-ctr,aes128-cbc,3des-cbc,aes256-cbc,twofish256-cbc,twofish-cbc,twofish128-cbc   gaes128-ctr,3des-ctr,aes256-ctr,aes128-cbc,3des-cbc,aes256-cbc,twofish256-cbc,twofish-cbc,twofish128-cbc   hmac-sha1-96,hmac-sha1,hmac-md5   hmac-sha1-96,hmac-sha1,hmac-md5   none   none             п5, 80:Server: lighttpd/1.4.35;CVE-2022-22707, CVE-2022-41556;1.0
+10.101.6.79;ONLINE;N/D;00:27:22:a6:a8:85;N/D;Linux/Unix;22, 80;22:SSH-2.0-dropbear_0.51, 80:Server: lighttpd/1.4.28;CVE-2022-22707, CVE-2022-41556;4.0
+10.101.6.78;ONLINE;N/D;80:85:44:95:f2:f3;N/D;Linux/Unix;;;;93.0
+10.101.6.76;ONLINE;N/D;70:fd:46:59:34:ec;N/D;Linux/Unix;;;;280.0
+10.101.6.84;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.85;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.83;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.86;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.82;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.87;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.88;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.90;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.89;ONLINE;N/D;80:85:44:95:f4:d5;N/D;Linux/Unix;;;;13.0
+10.101.6.81;ONLINE;N/D;bc:ff:4d:e7:f4:67;N/D;Windows;;;;18.0
+10.101.6.96;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.95;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.93;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.94;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.92;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.91;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.98;ONLINE;N/D;80:85:44:95:f2:9c;N/D;Linux/Unix;;;;1.0
+10.101.6.100;ONLINE;N/D;80:85:44:95:f3:02;N/D;Linux/Unix;;;;2.0
+10.101.6.99;ONLINE;N/D;40:83:de:ca:03:4f;N/D;Windows;80;80:Server: Microsoft-WinCE/7.00  Last-Modified: Tue, 01 Jan 2013 00:00:00 GMT  Content-Type: text/html  Content-Length: 976;;38.0
+10.101.6.97;ONLINE;N/D;80:85:44:95:f2:8d;N/D;Linux/Unix;;;;6.0
+10.101.6.106;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.104;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.102;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.107;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.110;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.103;ONLINE;N/D;f0:9f:c2:94:2f:d6;N/D;Linux/Unix;22;22:SSH-2.0-dropbear_2013.59    LQK}?TPVٙ؅   Pdiffie-hellman-group1-sha1,diffie-hellman-group14-sha1,kexguess2@matt.ucc.asn.au   ssh-rsa,ssh-dss   =aes128-ctr,3des-ctr,aes256-ctr,aes128-cbc,3des-cbc,aes256-cbc   =aes128-ctr,3des-ctr,aes256-ctr,aes128-cbc,3des-cbc,aes256-cbc   hmac-sha1,hmac-md5   hmac-sha1,hmac-md5   none   none             җ\;;2.0
+10.101.6.101;ONLINE;N/D;80:85:44:95:f2:ec;N/D;Linux/Unix;;;;3.0
+10.101.6.108;ONLINE;N/D;80:85:44:95:f2:16;N/D;Linux/Unix;;;;1.0
+10.101.6.105;ONLINE;N/D;88:da:1a:3c:0d:1a;N/D;Cisco/Appliance;;;;22.0
+10.101.6.109;ONLINE;N/D;88:da:1a:57:e0:2d;N/D;Cisco/Appliance;;;;8.0
+10.101.6.116;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.117;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.120;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.119;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.115;ONLINE;N/D;80:85:44:95:f2:38;N/D;Linux/Unix;;;;1.0
+10.101.6.114;ONLINE;N/D;88:da:1a:2f:73:4f;N/D;Cisco/Appliance;;;;8.0
+10.101.6.113;ONLINE;N/D;88:da:1a:58:0e:37;N/D;Cisco/Appliance;;;;6.0
+10.101.6.111;ONLINE;N/D;80:64:6f:a5:f3:27;N/D;Windows;;;;57.0
+10.101.6.118;ONLINE;N/D;88:da:1a:3c:08:e0;N/D;Cisco/Appliance;;;;15.0
+10.101.6.112;ONLINE;N/D;88:da:1a:58:10:25;N/D;Cisco/Appliance;;;;65.0
+10.101.6.122;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.121;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.128;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.127;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.130;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.129;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.124;ONLINE;N/D;80:85:44:95:f2:06;N/D;Linux/Unix;;;;1.0
+10.101.6.126;ONLINE;N/D;80:85:44:95:f2:0a;N/D;Linux/Unix;;;;1.0
+10.101.6.125;ONLINE;N/D;88:da:1a:58:12:bc;N/D;Cisco/Appliance;;;;9.0
+10.101.6.123;ONLINE;N/D;88:da:1a:3c:55:59;N/D;Cisco/Appliance;;;;22.0
+10.101.6.132;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.135;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.137;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.134;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.138;ONLINE;N/D;80:85:44:95:f1:fe;N/D;Linux/Unix;;;;2.0
+10.101.6.136;ONLINE;N/D;80:85:44:95:f2:fe;N/D;Linux/Unix;;;;5.0
+10.101.6.131;ONLINE;MIT005-L12;30:10:b3:07:45:05;N/D;Windows;5900, 10000;5900:RFB 003.008, 10000:Bem-vindo cliente 10.101.6.72 ao Sintico do MIT-Player.;;10.0
+10.101.6.139;ONLINE;N/D;80:85:44:95:f1:ca;N/D;Linux/Unix;;;;7.0
+10.101.6.140;ONLINE;N/D;80:85:44:95:f1:e4;N/D;Linux/Unix;;;;1.0
+10.101.6.133;ONLINE;N/D;98:2a:0a:e1:64:55;N/D;Windows;80;80:HTTP/1.1 501 Not Implemented    501 Not Implemented: Only GET and POST supported;;4.0
+10.101.6.142;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.144;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.141;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.147;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.148;ONLINE;N/D;80:85:44:95:f3:64;N/D;Linux/Unix;;;;1.0
+10.101.6.145;ONLINE;N/D;80:85:44:95:f1:de;N/D;Linux/Unix;;;;1.0
+10.101.6.149;ONLINE;N/D;80:85:44:95:f1:e1;N/D;Linux/Unix;;;;7.0
+10.101.6.150;ONLINE;N/D;80:85:44:95:f1:e7;N/D;Linux/Unix;;;;5.0
+10.101.6.146;ONLINE;N/D;80:85:44:95:f3:05;N/D;Linux/Unix;;;;9.0
+10.101.6.143;ONLINE;N/D;80:85:44:95:f2:e1;N/D;Linux/Unix;;;;23.0
+10.101.6.158;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.151;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.159;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.160;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.154;ONLINE;N/D;80:85:44:95:f1:fa;N/D;Linux/Unix;;;;1.0
+10.101.6.152;ONLINE;N/D;c8:36:a3:20:77:82;N/D;Cisco/Appliance;80;80:HTTP/1.1 405 Method Not Allowed  Content-Type: text/html  Content-Length: 52;;1.0
+10.101.6.156;ONLINE;N/D;80:85:44:95:f2:99;N/D;Linux/Unix;;;;74.0
+10.101.6.153;ONLINE;N/D;e0:5a:1b:a8:6c:10;N/D;Cisco/Appliance;80;80:HTTP/1.1 405 Method Not Allowed  Content-Type: text/html  Content-Length: 52;;61.0
+10.101.6.155;ONLINE;N/D;e0:5a:1b:a8:6f:74;N/D;Cisco/Appliance;80;80:HTTP/1.1 405 Method Not Allowed  Content-Type: text/html  Content-Length: 52;;65.0
+10.101.6.157;ONLINE;N/D;b4:29:3d:7b:c5:c3;N/D;Linux/Unix;;;;314.0
+10.101.6.164;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.161;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.163;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.162;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.166;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.167;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.165;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.168;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.169;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.170;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.172;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.174;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.175;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.173;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.171;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.177;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.178;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.176;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.180;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.179;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.184;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.182;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.186;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.185;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.181;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.188;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.189;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.183;ONLINE;N/D;00:90:c2:e1:17:54;N/D;Linux/Unix;;;;110.0
+10.101.6.187;ONLINE;GER003-L10;d0:94:66:c0:9b:01;N/D;Windows;;;;2.0
+10.101.6.190;ONLINE;TOT002-L10;9c:7b:ef:c1:31:05;N/D;Windows;;;;1.0
+10.101.6.198;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.199;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.200;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.196;ONLINE;N/D;8c:90:2d:37:1b:20;N/D;Linux/Unix;80;80:Server: TP-LINK HTTPD/1.0  X-Frame-Options: SAMEORIGIN  Content-Type: text/html, charset=utf-8  Content-Length: 124  Connection: close  Set-Cookie: JSESSIONID=deleted, Expires=Thu, 01 Jan 1970 00:00:01 GMT, Path=/, HttpOnly    <html><head><title>405 Method Not Allowed</title></head><body><center><h1>405 Method Not Allowed</h1></center></body></html>;CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;1.0
+10.101.6.197;ONLINE;N/D;8c:90:2d:37:1f:6c;N/D;Linux/Unix;80;80:Server: TP-LINK HTTPD/1.0  X-Frame-Options: SAMEORIGIN  Content-Type: text/html, charset=utf-8  Content-Length: 124  Connection: close  Set-Cookie: JSESSIONID=deleted, Expires=Thu, 01 Jan 1970 00:00:01 GMT, Path=/, HttpOnly    <html><head><title>405 Method Not Allowed</title></head><body><center><h1>405 Method Not Allowed</h1></center></body></html>;CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;6.0
+10.101.6.194;ONLINE;N/D;78:8c:b5:58:45:00;N/D;Linux/Unix;80;80:Server: TP-LINK HTTPD/1.0  X-Frame-Options: SAMEORIGIN  Content-Type: text/html, charset=utf-8  Content-Length: 124  Connection: close  Set-Cookie: JSESSIONID=deleted, Expires=Thu, 01 Jan 1970 00:00:01 GMT, Path=/, HttpOnly    <html><head><title>405 Method Not Allowed</title></head><body><center><h1>405 Method Not Allowed</h1></center></body></html>;CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;2.0
+10.101.6.192;ONLINE;N/D;78:8c:b5:58:48:6e;N/D;Linux/Unix;80;80:Server: TP-LINK HTTPD/1.0  X-Frame-Options: SAMEORIGIN  Content-Type: text/html, charset=utf-8  Content-Length: 124  Connection: close  Set-Cookie: JSESSIONID=deleted, Expires=Thu, 01 Jan 1970 00:00:01 GMT, Path=/, HttpOnly    <html><head><title>405 Method Not Allowed</title></head><body><center><h1>405 Method Not Allowed</h1></center></body></html>;CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;1.0
+10.101.6.193;ONLINE;N/D;78:8c:b5:58:47:60;N/D;Linux/Unix;80;80:Server: TP-LINK HTTPD/1.0  X-Frame-Options: SAMEORIGIN  Content-Type: text/html, charset=utf-8  Content-Length: 124  Connection: close  Set-Cookie: JSESSIONID=deleted, Expires=Thu, 01 Jan 1970 00:00:01 GMT, Path=/, HttpOnly    <html><head><title>405 Method Not Allowed</title></head><body><center><h1>405 Method Not Allowed</h1></center></body></html>;CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;1.0
+10.101.6.195;ONLINE;N/D;48:22:54:3f:fe:26;N/D;Linux/Unix;80;80:Server: TP-LINK HTTPD/1.0  X-Frame-Options: SAMEORIGIN  Content-Type: text/html, charset=utf-8  Content-Length: 124  Connection: close  Set-Cookie: JSESSIONID=deleted, Expires=Thu, 01 Jan 1970 00:00:01 GMT, Path=/, HttpOnly    <html><head><title>405 Method Not Allowed</title></head><body><center><h1>405 Method Not Allowed</h1></center></body></html>;CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;3.0
+10.101.6.191;ONLINE;TOT001-L10;e4:e7:49:fb:ea:25;N/D;Windows;;;;3.0
+10.101.6.203;ONLINE;PDV303-L10;e0:69:95:47:c9:df;N/D;Linux/Unix;22;22:SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5;;1.0
+10.101.6.204;ONLINE;PDV204-L10;e0:69:95:47:c9:73;N/D;Linux/Unix;22;22:SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5;;1.0
+10.101.6.202;ONLINE;PDV202-L10;e0:69:95:47:c8:55;N/D;Linux/Unix;22;22:SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5;;1.0
+10.101.6.201;ONLINE;PDV201-L10;e0:69:95:47:ca:d6;N/D;Linux/Unix;22;22:SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5;;1.0
+10.101.6.208;ONLINE;N/D;00:e0:4c:62:9f:06;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.207;ONLINE;N/D;e0:69:95:47:c4:c8;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.206;ONLINE;N/D;e0:69:95:47:c8:5b;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.205;ONLINE;N/D;40:62:31:29:cf:e2;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;2.0
+10.101.6.209;ONLINE;PDV209-L10;e0:69:95:47:c2:cb;N/D;Linux/Unix;22;22:SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5;;1.0
+10.101.6.210;ONLINE;N/D;40:62:31:29:d9:6e;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.215;ONLINE;N/D;e0:69:95:47:c7:a2;N/D;Linux/Unix;22;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13;;1.0
+10.101.6.213;ONLINE;N/D;e0:69:95:47:ca:50;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.216;ONLINE;N/D;94:de:80:f1:74:b2;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.211;ONLINE;N/D;e0:69:95:47:c2:85;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.217;ONLINE;N/D;e0:d5:5e:f4:7c:21;N/D;Linux/Unix;22;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13;;1.0
+10.101.6.212;ONLINE;N/D;e0:69:95:47:c8:e2;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.218;ONLINE;N/D;e0:69:95:47:c5:d9;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;4.0
+10.101.6.214;ONLINE;N/D;e0:69:95:47:c3:54;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.219;ONLINE;N/D;00:18:8b:e0:39:09;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.220;ONLINE;N/D;90:e6:ba:63:d7:e7;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.222;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.225;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.224;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.226;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.228;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.229;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.227;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.230;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.223;ONLINE;N/D;e0:69:95:47:c3:67;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;1.0
+10.101.6.221;ONLINE;N/D;00:18:8b:e0:35:83;N/D;Linux/Unix;22, 5900;22:SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.13, 5900:RFB 003.008;;2.0
+10.101.6.234;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.231;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.235;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.236;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.232;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.239;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.238;ONLINE;KM776CF5;00:17:c8:77:6c:f5;N/D;Linux/Unix;80;80:Server: KM-MFP-http/V0.0.1  Content-Type: text/html, charset=UTF-8  ETag:   Cache-Control: no-cache  Pragma: no-cache  Expires: Thu, 01 Jan 1970 00:00:00 GMT  Set-Cookie: rtl=0, path=/,;;1.0
+10.101.6.240;ONLINE;N/D;78:8c:b5:58:47:7a;N/D;Linux/Unix;80;80:Server: TP-LINK HTTPD/1.0  X-Frame-Options: SAMEORIGIN  Content-Type: text/html, charset=utf-8  Content-Length: 124  Connection: close  Set-Cookie: JSESSIONID=deleted, Expires=Thu, 01 Jan 1970 00:00:01 GMT, Path=/, HttpOnly    <html><head><title>405 Method Not Allowed</title></head><body><center><h1>405 Method Not Allowed</h1></center></body></html>;CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;1.0
+10.101.6.233;ONLINE;SAC003-L10;d0:94:66:c0:98:31;N/D;Windows;;;;1.0
+10.101.6.237;ONLINE;ECM003-L10;10:98:36:ff:50:7b;N/D;Windows;;;;1.0
+10.101.6.242;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.245;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.243;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.244;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.249;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.250;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.241;ONLINE;N/D;78:8c:b5:58:46:e4;N/D;Linux/Unix;80;80:Server: TP-LINK HTTPD/1.0  X-Frame-Options: SAMEORIGIN  Content-Type: text/html, charset=utf-8  Content-Length: 124  Connection: close  Set-Cookie: JSESSIONID=deleted, Expires=Thu, 01 Jan 1970 00:00:01 GMT, Path=/, HttpOnly    <html><head><title>405 Method Not Allowed</title></head><body><center><h1>405 Method Not Allowed</h1></center></body></html>;CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;3.0
+10.101.6.246;ONLINE;N/D;78:8c:b5:58:45:b4;N/D;Linux/Unix;80;80:Server: TP-LINK HTTPD/1.0  X-Frame-Options: SAMEORIGIN  Content-Type: text/html, charset=utf-8  Content-Length: 124  Connection: close  Set-Cookie: JSESSIONID=deleted, Expires=Thu, 01 Jan 1970 00:00:01 GMT, Path=/, HttpOnly    <html><head><title>405 Method Not Allowed</title></head><body><center><h1>405 Method Not Allowed</h1></center></body></html>;CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;1.0
+10.101.6.247;ONLINE;SRV001-L10;e4:e7:49:fb:ea:62;N/D;Windows;;;;1.0
+10.101.6.248;ONLINE;N/D;ec:08:6b:b8:20:a8;N/D;Linux/Unix;22;22:SSH-2.0-dropbear    	c$uKC   mcurve25519-sha256@libssh.org,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,kexguess2@matt.ucc.asn.au   ssh-rsa   aes128-ctr,aes256-ctr   aes128-ctr,aes256-ctr   hmac-sha1,hmac-sha2-256   hmac-sha1,hmac-sha2-256   none   none             \;;2.0
+10.101.6.251;OFFLINE;N/D;N/D;N/D;N/D;;;;-1.0
+10.101.6.254;ONLINE;SERVER-LJ06;f0:4d:a2:e1:fd:39;N/D;Linux/Unix;22, 80, 3306;22:SSH-2.0-OpenSSH_6.6.1p1 Ubuntu-2ubuntu2.13, 80:Server: Apache/2.4.7 (Ubuntu)  X-Powered-By: PHP/5.5.9-1ubuntu4.29  Set-Cookie: PHPSESSID=e804d24194a400feb5f9ed16a23960b3, path=/  Expires: Thu, 19 Nov 1981 08:52:00 GMT  Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0  Pragma: no-cache  Connection: close  Content-Type: text/html, charset=ISO-8859-1, 3306:i   iHost '10.101.6.72' is blocked because of many connection errors, unblock with 'mysqladmin flush-hosts';CVE-2020-11984, CVE-2020-11985, CVE-2020-11993, CVE-2020-13938, CVE-2020-13950, CVE-2020-1927, CVE-2020-1934, CVE-2020-35452, CVE-2020-9490, CVE-2021-26690, CVE-2021-26691, CVE-2021-30641, CVE-2021-33193, CVE-2021-34798, CVE-2021-36160, CVE-2021-39275, CVE-2021-40438, CVE-2021-44224, CVE-2021-44790, CVE-2022-22719, CVE-2022-22720, CVE-2022-22721, CVE-2022-23943, CVE-2022-26377, CVE-2022-28330, CVE-2022-28614, CVE-2022-28615, CVE-2022-29404, CVE-2022-30556, CVE-2022-31813, CVE-2022-36760, CVE-2022-37436, CVE-2023-25690, CVE-2023-27522, CVE-2023-31122, CVE-2023-38709, CVE-2023-43622, CVE-2023-45802, CVE-2024-24795, CVE-2024-27316, CVE-2024-36387, CVE-2024-38472, CVE-2024-38473, CVE-2024-38474, CVE-2024-38475, CVE-2024-38476, CVE-2024-38477, CVE-2024-39573, CVE-2024-40898, CVE-2024-42516, CVE-2024-43204, CVE-2024-43394, CVE-2024-47252, CVE-2025-23048, CVE-2025-3891, CVE-2025-49630, CVE-2025-49812, CVE-2025-53020;1.0
+10.101.6.253;ONLINE;VAS001-L10;f0:4d:a2:e2:50:a7;N/D;Windows;;;;1.0
+10.101.6.252;ONLINE;N/D;2a:34:88:5c:8d:68;N/D;Linux/Unix;;;;516.0
