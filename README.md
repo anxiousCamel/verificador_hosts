@@ -23,30 +23,6 @@ Projeto de auditoria de rede local via terminal, com recursos completos de varre
 </p>
 
 <!-- Gráfico Mermaid (compatível com GitHub) -->
-
-```mermaid
-flowchart LR
-  A[Verificador de Hosts] --> B[Python 3.8+]
-  A --> C[CLI e UX]
-  C --> C1[rich]
-  C --> C2[tqdm]
-  A --> D[Rede]
-  D --> D1[socket]
-  D --> D2[ssl]
-  D --> D3[ping / arp / ip neigh]
-  A --> E[Vulnerabilidades]
-  E --> E1[NVD JSON]
-  E --> E2[packaging.version]
-  A --> F[Concorrencia]
-  F --> F1[ThreadPoolExecutor]
-  F --> F2[Semaphore]
-  A --> G[Relatorios]
-  G --> G1[rich Table]
-  G --> G2[CSV]
-```
-
-<!-- Versão alternativa "safe" (se seu renderer não suportar alguns caracteres) -->
-
 ```mermaid
 flowchart TD
   A[Verificador] --> B[Python]
