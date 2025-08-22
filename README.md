@@ -1,8 +1,73 @@
+
+
 # 🚀 Verificador de Hosts com Auditoria de Segurança
 
 Projeto de auditoria de rede local via terminal, com recursos completos de varredura e análise de vulnerabilidades.
 
 ---
+## 🧰 Tecnologias & Linguagens
+
+<!-- Badges do stack -->
+
+<p align="left">
+  <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/CLI-rich-5D2B7D" alt="rich" />
+  <img src="https://img.shields.io/badge/CLI-tqdm-4A4A4A" alt="tqdm" />
+  <img src="https://img.shields.io/badge/Rede-socket%20ssl-0A66C2" alt="socket/ssl" />
+  <img src="https://img.shields.io/badge/SO-ping%20arp%20ip%20neigh-555555" alt="ping/arp/ip neigh" />
+  <img src="https://img.shields.io/badge/HTTP-requests-BA2F2F?logo=httpie&logoColor=white" alt="requests" />
+  <img src="https://img.shields.io/badge/Versionamento-packaging.version-2E7D32" alt="packaging" />
+  <img src="https://img.shields.io/badge/Dados-NVD%20(CVE%20JSON)-E65100" alt="NVD" />
+  <img src="https://img.shields.io/badge/Concorr%C3%AAncia-ThreadPoolExecutor%20Semaphore-6D4C41" alt="threads" />
+  <img src="https://img.shields.io/badge/Relat%C3%B3rio-CSV%20(%3B%20delimiter)-2962FF" alt="CSV" />
+</p>
+
+<!-- Gráfico Mermaid (compatível com GitHub) -->
+
+```mermaid
+flowchart LR
+  A[Verificador de Hosts] --> B[Python 3.8+]
+  A --> C[CLI e UX]
+  C --> C1[rich]
+  C --> C2[tqdm]
+  A --> D[Rede]
+  D --> D1[socket]
+  D --> D2[ssl]
+  D --> D3[ping / arp / ip neigh]
+  A --> E[Vulnerabilidades]
+  E --> E1[NVD JSON]
+  E --> E2[packaging.version]
+  A --> F[Concorrencia]
+  F --> F1[ThreadPoolExecutor]
+  F --> F2[Semaphore]
+  A --> G[Relatorios]
+  G --> G1[rich Table]
+  G --> G2[CSV]
+```
+
+<!-- Versão alternativa "safe" (se seu renderer não suportar alguns caracteres) -->
+
+```mermaid
+flowchart TD
+  A[Verificador] --> B[Python]
+  A --> C[CLI]
+  C --> C1[rich]
+  C --> C2[tqdm]
+  A --> D[Rede]
+  D --> D1[socket]
+  D --> D2[ssl]
+  D --> D3[ping/arp/ip]
+  A --> E[CVEs]
+  E --> E1[NVD]
+  E --> E2[packaging]
+  A --> F[Threads]
+  F --> F1[ThreadPoolExecutor]
+  F --> F2[Semaphore]
+  A --> G[Relatorio]
+  G --> G1[tabela]
+  G --> G2[csv]
+```
+
 
 ##  Funcionalidades
 
