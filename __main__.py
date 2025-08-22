@@ -309,7 +309,7 @@ def main():
         except Exception as e:
             console.print(f"[red]Falha ao atualizar base NVD: {e}[/red]")
     else:
-        console.print("\n[bold cyan]Pulando atualização da NVD (recente ou config.skip_nvd_update=1).[/bold cyan]\n")
+        console.print("\n[bold cyan]Pulando atualização da NVD (recente ou config.skip_nvd_update=0).[/bold cyan]\n")
 
     # 6) OUI e input
     fabricantes = carregar_tabela_oui()

@@ -25,22 +25,9 @@ console = Console()
 
 def carregar_tabela_oui(path='manuf'):
     """
-    Carrega a tabela OUI a partir de um arquivo de texto com dados de fabricantes.
-    
-    Espera um formato semelhante ao usado pelo Nmap ou Wireshark:
-        FC-52-CE   (base)  Fabricante XYZ
-
-    Parâmetros:
-        path (str): Caminho para o arquivo contendo os prefixos MAC.
-
-    Retorna:
-        dict: Dicionário no formato { 'XX:XX:XX': 'Nome do fabricante' }
-
-    Exemplo:
-        {
-            'FC:52:CE': 'Cisco Systems',
-            '00:1A:2B': 'Intel Corp'
-        }
+    Carrega a tabela OUI (Wireshark/Nmap) e indexa por duas chaves:
+    - 'FC52CE' (sem separadores)
+    - 'FC:52:CE' (com dois-pontos)
     """
     fabricantes = {}
 
@@ -48,19 +35,36 @@ def carregar_tabela_oui(path='manuf'):
         console.print(f"[red]Arquivo '{path}' não encontrado.[/red]")
         return fabricantes
 
-    with open(path, encoding='utf-16') as f:
-        for linha in f:
-            if linha.strip().startswith('#') or not linha.strip():
-                continue  # ignora comentários e linhas vazias
+    # Tente latin-1; se falhar, caia para utf-8
+    for enc in ("latin-1", "utf-8", "utf-16"):
+        try:
+            with open(path, encoding=enc, errors="ignore") as f:
+                for linha in f:
+                    if linha.strip().startswith('#') or not linha.strip():
+                        continue
 
-            partes = linha.strip().split(None, 2)  # separa por espaços ou tabs
-            if len(partes) >= 2:
-                prefixo = partes[0].upper().replace('-', ':').strip()
-                prefixo = ":".join(prefixo.split(":")[:3])  # garante o formato XX:XX:XX
-                fabricante = partes[2].strip() if len(partes) >= 3 else partes[1].strip()
-                fabricantes[prefixo] = fabricante
+                    partes = linha.strip().split()
+                    if len(partes) < 2:
+                        continue
+
+                    # primeira coluna é o prefixo (pode vir com '-' ou ':')
+                    raw = partes[0].upper()
+                    raw = raw.replace('-', ':').strip()
+                    # normaliza
+                    oui_colon = ":".join(raw.split(":")[:3])                  # FC:52:CE
+                    oui_plain = oui_colon.replace(":", "")                    # FC52CE
+                    fabricante = " ".join(partes[1:]).strip()
+
+                    if oui_plain:
+                        fabricantes[oui_plain] = fabricante
+                    if oui_colon:
+                        fabricantes[oui_colon] = fabricante
+            break
+        except Exception:
+            continue
 
     return fabricantes
+
 
 
 def solicitar_dados_input():

@@ -96,7 +96,7 @@ PRESET_LEVE = {
     "resolve_hostname": False,
     "tcp_only": True,
     "skip_cve": True,
-    "skip_nvd_update": True,
+    "skip_nvd_update": False,
     "adaptive": True,  # pode reduzir ainda mais se necessário
 }
 

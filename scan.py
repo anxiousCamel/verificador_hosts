@@ -351,11 +351,12 @@ def testar_portas(ip: str, portas: List[int], timeout: float = 2.5, workers: int
 # ============================
 
 def _fabricante_por_mac(mac: str, fabricantes: Dict[str, str]) -> str:
-    """Retorna fabricante pelo OUI (3 primeiros octetos)."""
-    if not mac or mac == "N/D":
+    """Retorna fabricante pelo OUI (tenta sem e com ':')."""
+    if not mac or mac in ("N/D", "MAC N/D", "-"):
         return "N/D"
-    oui = mac.upper().replace(":", "")[:6]
-    return fabricantes.get(oui, "N/D")
+    oui_plain = mac.upper().replace("-", "").replace(":", "")[:6]   # FC52CE
+    oui_colon = ":".join([oui_plain[i:i+2] for i in range(0, 6, 2)])  # FC:52:CE
+    return fabricantes.get(oui_plain) or fabricantes.get(oui_colon) or "N/D"
 
 
 def verificar_host(
