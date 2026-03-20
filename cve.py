@@ -1,32 +1,40 @@
 """
-# cve.py
+# cve.py — Verificação de vulnerabilidades via CPE + faixa de versão
 
-## Propósito
-Eliminar falsos positivos trocando a busca por descrição por **CPE + faixa de versão**,
-com **cache em disco** e **índice rápido**.
+## Descrição
+Módulo responsável por correlacionar banners de serviços com CVEs conhecidos,
+usando dados da NVD (National Vulnerability Database) e matching por CPE.
 
-## O que este módulo faz
-- Lê JSONs da NVD (pasta `nvd_data/`).
-- Indexa por (vendor, product) guardando:
-  - `anyVersion` (qualquer versão),
-  - `exactVersion` (quando o CPE vem com versão **exata**),
-  - `versionRules` (faixas start/end inclusive/exclusive).
-- Extrai (produto, versão) de banners, normaliza para a taxonomia NVD,
-  e confirma CVEs por versão.
+Estratégia para minimizar falsos positivos:
+1. Extrai (produto, versão) do banner via regex
+2. Normaliza para o vocabulário NVD (vendor, product) via mapa de aliases
+3. Consulta índice CPE local (construído a partir dos JSONs NVD)
+4. Compara versão usando semver: match exato, faixa (start/end), ou qualquer versão
+
+## Otimizações
+- Cache em disco (pickle) do índice CPE (~14MB) para startup instantâneo
+- LRU cache na construção do índice (evita rebuilds em sequência)
+- Filtro por anos recentes (NVD_INDEX_MAX_YEARS)
+- Filtro por tipo de CPE (aplicação/OS/hardware)
+- Usa orjson quando disponível (2-5x mais rápido que json stdlib)
+
+## Variáveis de ambiente
+- `NVD_DIR`: Diretório dos JSONs NVD (padrão: "nvd_data")
+- `NVD_INDEX_PKL`: Caminho do cache pickle (padrão: nvd_data/nvd_index.pkl)
+- `NVD_INDEX_MAX_YEARS`: Anos recentes a indexar (padrão: 5)
+- `CPE_PART_ALLOWED`: Filtro de tipo — "a" (app), "o" (OS), "h" (hw), "" (todos)
 
 ## Requisitos
 - packaging>=24.0
 
-## API (compatível)
-- carregar_base_local_cves(diretorio="nvd_data", usar_cache=True)
-- verificar_vulnerabilidades_em_banners(banners, base_cves=None, detalhado=False)
+## Autor
+Luiz
 """
 
 from __future__ import annotations
 
 import os
 import re
-import json
 import gzip
 import pickle
 from typing import Dict, List, Tuple, Iterable, Optional
@@ -34,158 +42,333 @@ from functools import lru_cache
 from datetime import datetime
 from packaging.version import Version, InvalidVersion
 
+# Usa orjson se disponível (2-5x mais rápido para parsing de JSONs grandes)
+try:
+    import orjson
+    def _load_json(f):
+        """Carrega JSON usando orjson (mais rápido para arquivos grandes)."""
+        return orjson.loads(f.read())
+except ImportError:
+    import json
+    def _load_json(f):
+        """Carrega JSON usando stdlib."""
+        return json.load(f)
+
+
 # ==============================
-# Configs
+# Configuração
 # ==============================
 
-DIRETORIO_NVD = os.environ.get("NVD_DIR", "nvd_data")
-NVD_INDEX_PKL = os.environ.get("NVD_INDEX_PKL", os.path.join(DIRETORIO_NVD, "nvd_index.pkl"))
-NVD_INDEX_MAX_YEARS = int(os.environ.get("NVD_INDEX_MAX_YEARS", "5"))  # anos recentes a considerar
-CPE_PART_ALLOWED = os.environ.get("CPE_PART_ALLOWED", "a")  # "a","o","h" ou "" p/ todos
+NVD_DIR = os.environ.get("NVD_DIR", "nvd_data")
+NVD_INDEX_PKL = os.environ.get("NVD_INDEX_PKL", os.path.join(NVD_DIR, "nvd_index.pkl"))
+NVD_INDEX_MAX_YEARS = int(os.environ.get("NVD_INDEX_MAX_YEARS", "5"))
+CPE_PART_ALLOWED = os.environ.get("CPE_PART_ALLOWED", "a")
+
 
 # ==============================
-# Normalização e parsing
+# Normalização de produtos
 # ==============================
 
-MAP_NORMALIZACAO: Dict[str, Tuple[str, str]] = {
-    "openssh": ("openbsd", "openssh"),
-    "apache": ("apache", "http_server"),
-    "httpd": ("apache", "http_server"),
-    "nginx": ("nginx", "nginx"),
-    "lighttpd": ("lighttpd", "lighttpd"),
-    "mysql": ("oracle", "mysql"),
-    "mariadb": ("mariadb", "mariadb"),
-    "postgresql": ("postgresql", "postgresql"),
-    "openssl": ("openssl", "openssl"),
-    "proftpd": ("proftpd_project", "proftpd"),
-    "pure-ftpd": ("pureftpd", "pureftpd"),
-    "vsftpd": ("vsftpd", "vsftpd"),
-    "opensmtpd": ("openbsd", "opensmtpd"),
-    "postfix": ("postfix", "postfix"),
-    "dovecot": ("dovecot", "dovecot"),
+# Mapeia nomes comuns de banners para (vendor, product) da taxonomia NVD
+_PRODUCT_ALIASES: Dict[str, Tuple[str, str]] = {
+    # SSH
+    "openssh":       ("openbsd", "openssh"),
+    # Web servers
+    "apache":        ("apache", "http_server"),
+    "httpd":         ("apache", "http_server"),
+    "nginx":         ("nginx", "nginx"),
+    "lighttpd":      ("lighttpd", "lighttpd"),
+    "microsoft-iis": ("microsoft", "internet_information_services"),
+    # Databases
+    "mysql":         ("oracle", "mysql"),
+    "mariadb":       ("mariadb", "mariadb"),
+    "postgresql":    ("postgresql", "postgresql"),
+    "redis":         ("redis", "redis"),
+    "mongodb":       ("mongodb", "mongodb"),
+    # TLS
+    "openssl":       ("openssl", "openssl"),
+    # FTP
+    "proftpd":       ("proftpd_project", "proftpd"),
+    "pureftpd":      ("pureftpd", "pure-ftpd"),
+    "pure-ftpd":     ("pureftpd", "pure-ftpd"),
+    "vsftpd":        ("vsftpd_project", "vsftpd"),
+    "ftpd":          ("openbsd", "ftpd"),
+    # Mail
+    "opensmtpd":     ("openbsd", "opensmtpd"),
+    "postfix":       ("postfix", "postfix"),
+    "dovecot":       ("dovecot", "dovecot"),
+    "exim":          ("exim", "exim"),
 }
 
-def _clean(s: str) -> str:
-    return (s or "").strip().lower()
 
-def normalizar_produto(nome: str) -> Tuple[str, str]:
+def normalize_product(name: str) -> Tuple[str, str]:
     """
-    ## normalizar_produto
-    Converte nome de banner para (vendor, product) próximo ao da NVD.
+    Converte nome de banner para (vendor, product) conforme taxonomia NVD.
+
+    Primeiro tenta match por alias conhecido, depois usa o nome como
+    vendor e product (fallback genérico).
+
+    Args:
+        name: Nome do produto extraído do banner (ex: "apache", "openssh").
+
+    Returns:
+        Tupla (vendor, product) normalizada.
     """
-    base = _clean(nome)
+    base = (name or "").strip().lower()
     compact = base.replace("-", "").replace("_", "")
-    for k, vp in MAP_NORMALIZACAO.items():
-        if compact.startswith(k.replace("-", "")):
-            return vp
-    return (base.replace(" ", "_"), base.replace(" ", "_"))
+    for alias, vendor_product in _PRODUCT_ALIASES.items():
+        if compact.startswith(alias.replace("-", "")):
+            return vendor_product
+    normalized = base.replace(" ", "_")
+    return (normalized, normalized)
 
-def extrair_nome_versao_banner(banner: str) -> Optional[Tuple[str, str]]:
+
+def extract_product_version(banner: str) -> Optional[Tuple[str, str]]:
     """
-    ## extrair_nome_versao_banner
-    Extrai (produto, versão) de um banner comum:
-      - "Server: Apache/2.4.49 ..."  -> ("apache","2.4.49")
-      - "OpenSSH_8.2p1 ..."          -> ("openssh","8.2p1")
-      - "nginx/1.24.0"               -> ("nginx","1.24.0")
+    Extrai (produto, versão) de um banner de serviço usando fingerprinting avançado.
+
+    Usa uma cadeia de regexes especializados, ordenados do mais específico ao
+    mais genérico. Cada padrão cobre um formato real de banner encontrado em
+    redes de produção.
+
+    Padrões reconhecidos (exemplos):
+    - "Server: Apache/2.4.49"           → ("apache", "2.4.49")
+    - "OpenSSH_8.2p1 Ubuntu-4ubuntu0.5" → ("openssh", "8.2p1")
+    - "220 ProFTPD 1.3.5a Server"       → ("proftpd", "1.3.5a")
+    - "Microsoft-IIS/10.0"              → ("microsoft-iis", "10.0")
+    - "220 (vsFTPd 3.0.3)"              → ("vsftpd", "3.0.3")
+    - "MySQL 5.7.42"                    → ("mysql", "5.7.42")
+    - "PostgreSQL 15.2"                 → ("postgresql", "15.2")
+    - "Exim 4.96"                       → ("exim", "4.96")
+    - "Dovecot ready."                  → ("dovecot", None) [sem versão]
+    - "nginx/1.24.0"                    → ("nginx", "1.24.0")
+
+    Args:
+        banner: String do banner.
+
+    Returns:
+        Tupla (produto, versão) ou None se não reconhecido.
     """
     if not banner:
         return None
-    b = banner.strip()
 
-    # nome/versao ou nome vX.Y.Z, aceitando sufixos distro (ex.: -1ubuntu1)
-    m = re.search(r'([A-Za-z0-9\-_]+)[/\s]v?([0-9]+(?:\.[0-9a-z]+){0,3}(?:[-_][0-9a-z\.]+)?)',
-                  b, flags=re.IGNORECASE)
-    if m:
-        return (_clean(m.group(1)), m.group(2))
+    text = banner.strip()
 
-    # nome_versao (ex.: OpenSSH_8.2p1)
-    m = re.search(r'([A-Za-z0-9\-_]+)_([0-9]+[0-9a-zA-Z\.\-]*)', b)
+    # --- Padrões específicos (mais confiáveis, testados primeiro) ---
+
+    # SSH: "SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5"
+    m = re.search(r'OpenSSH[_\s](\d+\.\d+[a-z0-9]*)', text, re.IGNORECASE)
     if m:
-        return (_clean(m.group(1)), m.group(2))
+        return ("openssh", m.group(1))
+
+    # FTP: "220 ProFTPD 1.3.5a Server" / "220 (vsFTPd 3.0.3)"
+    m = re.search(r'(?:Pro)?FTPd?\s+v?(\d+\.\d+(?:\.\d+)?[a-z]?)', text, re.IGNORECASE)
+    if m:
+        product = "proftpd" if "proftp" in text.lower() else "vsftpd" if "vsftp" in text.lower() else "ftpd"
+        return (product, m.group(1))
+
+    # Pure-FTPd: "220---------- Welcome to Pure-FTPd [privsep] ----------"
+    m = re.search(r'Pure-FTPd', text, re.IGNORECASE)
+    if m:
+        ver_m = re.search(r'Pure-FTPd\s+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+        return ("pure-ftpd", ver_m.group(1) if ver_m else None)
+
+    # IIS: "Microsoft-IIS/10.0" / "Server: Microsoft-IIS/8.5"
+    m = re.search(r'Microsoft-IIS[/\s]+(\d+\.\d+)', text, re.IGNORECASE)
+    if m:
+        return ("microsoft-iis", m.group(1))
+
+    # Apache: "Server: Apache/2.4.49" / "Apache/2.4.49 (Ubuntu)"
+    m = re.search(r'Apache(?:/|\s+HTTP\s+Server\s*/?\s*)(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("apache", m.group(1))
+
+    # nginx: "nginx/1.24.0" / "Server: nginx/1.18.0 (Ubuntu)"
+    m = re.search(r'nginx[/\s]+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("nginx", m.group(1))
+
+    # lighttpd: "lighttpd/1.4.63"
+    m = re.search(r'lighttpd[/\s]+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("lighttpd", m.group(1))
+
+    # MySQL/MariaDB: "5.7.42-0ubuntu0.18.04.1" / "10.6.12-MariaDB"
+    m = re.search(r'(\d+\.\d+\.\d+)(?:\S*?)[- ]?MariaDB', text, re.IGNORECASE)
+    if m:
+        return ("mariadb", m.group(1))
+    m = re.search(r'MySQL\s*[/\s]?(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("mysql", m.group(1))
+
+    # PostgreSQL: "PostgreSQL 15.2 on x86_64"
+    m = re.search(r'PostgreSQL\s+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("postgresql", m.group(1))
+
+    # Redis: "Redis version 7.0.5" / "redis_version:7.0.5"
+    m = re.search(r'[Rr]edis(?:\s+version|_version)?[:\s]+(\d+\.\d+(?:\.\d+)?)', text)
+    if m:
+        return ("redis", m.group(1))
+
+    # Exim: "220 mail.example.com ESMTP Exim 4.96"
+    m = re.search(r'Exim\s+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("exim", m.group(1))
+
+    # Postfix: "220 mail.example.com ESMTP Postfix"
+    m = re.search(r'Postfix(?:\s+(\d+\.\d+(?:\.\d+)?))?', text, re.IGNORECASE)
+    if m:
+        return ("postfix", m.group(1))
+
+    # Dovecot: "* OK [CAPABILITY ...] Dovecot ready."
+    m = re.search(r'Dovecot(?:\s+(\d+\.\d+(?:\.\d+)?))?', text, re.IGNORECASE)
+    if m:
+        return ("dovecot", m.group(1))
+
+    # OpenSSL em banners: "OpenSSL/1.1.1" (geralmente junto com outro produto)
+    m = re.search(r'OpenSSL[/\s]+(\d+\.\d+\.\d+[a-z]*)', text, re.IGNORECASE)
+    if m:
+        return ("openssl", m.group(1))
+
+    # MongoDB: "MongoDB version v7.0.2"
+    m = re.search(r'MongoDB\s+(?:version\s+)?v?(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("mongodb", m.group(1))
+
+    # --- Padrões genéricos (fallback) ---
+
+    # nome/versão ou nome vX.Y.Z (com sufixos distro como -1ubuntu1)
+    m = re.search(
+        r'([A-Za-z0-9\-_]+)[/\s]v?([0-9]+(?:\.[0-9a-z]+){0,3}(?:[-_][0-9a-z\.]+)?)',
+        text, flags=re.IGNORECASE,
+    )
+    if m:
+        return (m.group(1).strip().lower(), m.group(2))
+
+    # nome_versão (ex: OpenSSH_8.2p1)
+    m = re.search(r'([A-Za-z0-9\-_]+)_([0-9]+[0-9a-zA-Z\.\-]*)', text)
+    if m:
+        return (m.group(1).strip().lower(), m.group(2))
 
     return None
+
 
 # ==============================
 # CPE e comparação de versões
 # ==============================
 
-def parse_cpe23(cpe: str) -> Optional[Dict[str, str]]:
+def parse_cpe23(cpe_uri: str) -> Optional[Dict[str, str]]:
     """
-    ## parse_cpe23
-    "cpe:2.3:a:vendor:product:version:update:..." -> dict mínimo.
+    Faz parsing de uma URI CPE 2.3 para seus componentes.
+
+    Formato: "cpe:2.3:part:vendor:product:version:update:..."
+
+    Args:
+        cpe_uri: String CPE 2.3 completa.
+
+    Returns:
+        Dict com part, vendor, product, version; ou None se inválido.
     """
-    partes = (cpe or "").split(":")
-    if len(partes) < 6:
+    parts = (cpe_uri or "").split(":")
+    if len(parts) < 6:
         return None
     return {
-        "part": partes[2],    # a=application, o=os, h=hardware
-        "vendor": partes[3],
-        "product": partes[4],
-        "version": partes[5],
+        "part": parts[2],
+        "vendor": parts[3],
+        "product": parts[4],
+        "version": parts[5],
     }
 
-def _to_version(v: Optional[str]) -> Optional[Version]:
+
+def _to_semver(version_str: Optional[str]) -> Optional[Version]:
     """
-    ## _to_version
-    Converte para Version; se inválida (ex.: 8.2p1), tenta heurística numérica.
+    Converte string de versão para packaging.version.Version.
+
+    Trata versões não-PEP440 (ex: "8.2p1") extraindo apenas a parte numérica.
+
+    Args:
+        version_str: String de versão.
+
+    Returns:
+        Version ou None se impossível converter.
     """
-    if not v:
+    if not version_str:
         return None
     try:
-        return Version(v)
+        return Version(version_str)
     except InvalidVersion:
-        m = re.match(r'^([0-9]+(?:\.[0-9]+){0,3})', v)
-        if m:
+        match = re.match(r'^([0-9]+(?:\.[0-9]+){0,3})', version_str)
+        if match:
             try:
-                return Version(m.group(1))
+                return Version(match.group(1))
             except InvalidVersion:
                 return None
         return None
 
-def comparar_versao(ver_alvo: str, regra: Dict[str, Optional[str]]) -> bool:
+
+def version_in_range(target: str, rules: Dict[str, Optional[str]]) -> bool:
     """
-    ## comparar_versao
-    Compara ver_alvo com faixa (start/end, inclusive/exclusive).
+    Verifica se uma versão está dentro de uma faixa NVD.
+
+    Regras suportadas:
+    - versionStartIncluding: target >= start
+    - versionStartExcluding: target > start
+    - versionEndIncluding: target <= end
+    - versionEndExcluding: target < end
+
+    Args:
+        target: Versão do alvo (extraída do banner).
+        rules: Dicionário com as regras de faixa da NVD.
+
+    Returns:
+        True se a versão está dentro da faixa.
     """
-    va = _to_version(ver_alvo)
-    if va is None:
+    target_ver = _to_semver(target)
+    if target_ver is None:
         return False
 
-    vsi = _to_version(regra.get("versionStartIncluding"))
-    vse = _to_version(regra.get("versionStartExcluding"))
-    vei = _to_version(regra.get("versionEndIncluding"))
-    vee = _to_version(regra.get("versionEndExcluding"))
+    start_inc = _to_semver(rules.get("versionStartIncluding"))
+    start_exc = _to_semver(rules.get("versionStartExcluding"))
+    end_inc = _to_semver(rules.get("versionEndIncluding"))
+    end_exc = _to_semver(rules.get("versionEndExcluding"))
 
-    if vsi and va < vsi:
+    if start_inc and target_ver < start_inc:
         return False
-    if vse and va <= vse:
+    if start_exc and target_ver <= start_exc:
         return False
-    if vei and va > vei:
+    if end_inc and target_ver > end_inc:
         return False
-    if vee and va >= vee:
+    if end_exc and target_ver >= end_exc:
         return False
     return True
 
-def versoes_iguais(v1: str, v2: str) -> bool:
+
+def versions_equal(v1: str, v2: str) -> bool:
     """
-    ## versoes_iguais
-    Compara versões tratando sufixos não semânticos (ex.: '8.2p1' ~ '8.2').
-    Tenta semântico; se não der, compara literal.
+    Compara duas versões com tolerância a sufixos não-semânticos.
+
+    Tenta comparação semver primeiro; se falhar, compara literalmente.
+
+    Args:
+        v1: Primeira versão.
+        v2: Segunda versão.
+
+    Returns:
+        True se as versões são equivalentes.
     """
-    a, b = _to_version(v1), _to_version(v2)
+    a, b = _to_semver(v1), _to_semver(v2)
     if a is not None and b is not None:
         return a == b
     return (v1 or "").strip() == (v2 or "").strip()
 
+
 # ==============================
-# Cache do índice (pickle)
+# Cache do índice em disco
 # ==============================
 
-def _ano_do_arquivo(nome: str) -> Optional[int]:
-    m = re.search(r'(\d{4})', nome or "")
-    return int(m.group(1)) if m else None
-
-def _carregar_indice_cache() -> Optional[Dict[Tuple[str, str], List[Dict]]]:
+def _load_index_cache() -> Optional[Dict[Tuple[str, str], List[dict]]]:
+    """Carrega índice CPE do cache pickle, se existir e for válido."""
     try:
         if os.path.exists(NVD_INDEX_PKL):
             with open(NVD_INDEX_PKL, "rb") as f:
@@ -194,101 +377,156 @@ def _carregar_indice_cache() -> Optional[Dict[Tuple[str, str], List[Dict]]]:
         return None
     return None
 
-def _salvar_indice_cache(indice: Dict[Tuple[str, str], List[Dict]]) -> None:
+
+def _save_index_cache(index: Dict[Tuple[str, str], List[dict]]) -> None:
+    """Salva índice CPE em cache pickle para reutilização."""
     try:
-        os.makedirs(os.path.dirname(NVD_INDEX_PKL), exist_ok=True)
+        os.makedirs(os.path.dirname(NVD_INDEX_PKL) or ".", exist_ok=True)
         with open(NVD_INDEX_PKL, "wb") as f:
-            pickle.dump(indice, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(index, f, protocol=pickle.HIGHEST_PROTOCOL)
     except Exception:
         pass
 
+
 # ==============================
-# Iteração de nós (nodes/children)
+# Iteração de nós CPE (recursiva via stack)
 # ==============================
 
 def _iter_cpe_matches(nodes: List[dict]):
-    """Percorre `nodes` e `children` recursivamente, gerando matches de CPE."""
+    """
+    Percorre a árvore de nós de configuração NVD, gerando CPE matches.
+
+    A estrutura NVD usa nodes com children recursivos. Esta função
+    usa stack iterativo (sem recursão) para evitar stack overflow
+    em CVEs com árvores profundas.
+
+    Args:
+        nodes: Lista de nós de configuração do CVE.
+
+    Yields:
+        Dicionários de CPE match (com cpe23Uri, vulnerable, version ranges).
+    """
     if not nodes:
         return
     stack = list(nodes)
     while stack:
         node = stack.pop()
-        for m in node.get("cpe_match", []) or []:
-            yield m
-        childs = node.get("children") or []
-        if childs:
-            stack.extend(childs)
+        for match in node.get("cpe_match", []) or []:
+            yield match
+        children = node.get("children") or []
+        if children:
+            stack.extend(children)
+
 
 # ==============================
 # Construção do índice CPE
 # ==============================
 
-@lru_cache(maxsize=1)
-def construir_indice_cpe(diretorio: str = DIRETORIO_NVD) -> Dict[Tuple[str, str], List[Dict]]:
+def _extract_year(filename: str) -> Optional[int]:
+    """Extrai ano de um nome de arquivo NVD (ex: 'nvdcve-1.1-2023.json.gz' → 2023)."""
+    match = re.search(r'(\d{4})', filename or "")
+    return int(match.group(1)) if match else None
+
+
+def _open_nvd_file(path: str):
+    """Abre arquivo NVD (suporta .json e .json.gz)."""
+    if path.endswith(".gz"):
+        return gzip.open(path, "rb")
+    return open(path, "rb")
+
+
+def _parse_cve_item(item: dict) -> Tuple[str, List[dict]]:
     """
-    ## construir_indice_cpe
-    Gera: { (vendor, product): [ { 'cve', 'anyVersion', 'exactVersion'?, 'versionRules' } ...] }
+    Extrai CVE ID e nós de configuração de um item NVD.
+
+    Suporta ambos os formatos NVD (1.1 e 2.0).
+
+    Args:
+        item: Item do JSON NVD.
+
+    Returns:
+        Tupla (cve_id, nodes).
+    """
+    if "cve" in item and "CVE_data_meta" in item.get("cve", {}):
+        # Formato NVD 1.1
+        cve_id = item["cve"]["CVE_data_meta"].get("ID", "")
+        nodes = item.get("configurations", {}).get("nodes", [])
+    else:
+        # Formato NVD 2.0
+        vuln = item.get("cve") or item.get("vuln") or {}
+        cve_id = (
+            vuln.get("id")
+            or vuln.get("CVE_data_meta", {}).get("ID", "")
+            or item.get("id", "")
+        )
+        nodes = item.get("configurations", {}).get("nodes", [])
+    return cve_id, nodes
+
+
+@lru_cache(maxsize=1)
+def build_cpe_index(nvd_dir: str = NVD_DIR) -> Dict[Tuple[str, str], List[dict]]:
+    """
+    Constrói índice CPE a partir dos JSONs NVD.
+
+    Estrutura: { (vendor, product): [ { cve, anyVersion, exactVersion?, versionRules } ] }
+
+    O índice permite lookup O(1) por (vendor, product) e depois iteração
+    linear apenas pelos CVEs daquele produto.
 
     Otimizações:
-    - Cache pickle (nvd_index.pkl).
-    - Recorte por anos (`NVD_INDEX_MAX_YEARS`).
-    - Filtro por part (default "a").
+    - Cache pickle em disco (evita re-parsing dos JSONs a cada execução)
+    - Filtro por anos recentes (NVD_INDEX_MAX_YEARS)
+    - Filtro por tipo de CPE (CPE_PART_ALLOWED)
+    - Usa orjson quando disponível
+
+    Args:
+        nvd_dir: Diretório contendo os arquivos JSON/JSON.GZ da NVD.
+
+    Returns:
+        Índice CPE indexado por (vendor, product).
     """
-    cache = _carregar_indice_cache()
-    if cache:
-        return cache
+    cached = _load_index_cache()
+    if cached:
+        return cached
 
-    indice: Dict[Tuple[str, str], List[Dict]] = {}
-    if not os.path.exists(diretorio):
-        _salvar_indice_cache(indice)
-        return indice
+    index: Dict[Tuple[str, str], List[dict]] = {}
+    if not os.path.exists(nvd_dir):
+        _save_index_cache(index)
+        return index
 
-    ano_atual = datetime.now().year
-    limiar = ano_atual - NVD_INDEX_MAX_YEARS
+    current_year = datetime.now().year
+    min_year = current_year - NVD_INDEX_MAX_YEARS
     part_filter = (CPE_PART_ALLOWED or "").strip().lower()
 
-    def _abrir(caminho: str):
-        if caminho.endswith(".gz"):
-            return gzip.open(caminho, "rt", encoding="utf-8")
-        return open(caminho, "r", encoding="utf-8")
-
-    for root, _, arquivos in os.walk(diretorio):
-        for arquivo in arquivos:
-            if not (arquivo.endswith(".json") or arquivo.endswith(".json.gz")):
+    for root, _, files in os.walk(nvd_dir):
+        for filename in files:
+            if not (filename.endswith(".json") or filename.endswith(".json.gz")):
                 continue
 
-            ano = _ano_do_arquivo(arquivo)
-            if ano and ano < limiar:
+            year = _extract_year(filename)
+            if year and year < min_year:
                 continue
 
-            caminho = os.path.join(root, arquivo)
+            filepath = os.path.join(root, filename)
             try:
-                with _abrir(caminho) as f:
-                    dados = json.load(f)
+                with _open_nvd_file(filepath) as f:
+                    data = _load_json(f)
             except Exception:
                 continue
 
-            itens = dados.get("CVE_Items") or dados.get("vulnerabilities")
-            if not itens:
+            items = data.get("CVE_Items") or data.get("vulnerabilities")
+            if not items:
                 continue
 
-            for item in itens:
-                # Layouts suportados
-                if "cve" in item:
-                    cve_id = item.get("cve", {}).get("CVE_data_meta", {}).get("ID", "")
-                    nodes = item.get("configurations", {}).get("nodes", [])
-                else:
-                    vuln = item.get("cve") or item.get("vuln") or {}
-                    cve_id = (vuln.get("id")
-                              or vuln.get("CVE_data_meta", {}).get("ID", "")
-                              or item.get("id", ""))
-                    nodes = item.get("configurations", {}).get("nodes", [])
+            for item in items:
+                cve_id, nodes = _parse_cve_item(item)
 
-                for match in _iter_cpe_matches(nodes):
-                    if not match.get("vulnerable", False):
+                for cpe_match in _iter_cpe_matches(nodes):
+                    if not cpe_match.get("vulnerable", False):
                         continue
-                    cpe_str = match.get("cpe23Uri") or match.get("criteria") or ""
-                    cpe = parse_cpe23(cpe_str)
+
+                    cpe_uri = cpe_match.get("cpe23Uri") or cpe_match.get("criteria") or ""
+                    cpe = parse_cpe23(cpe_uri)
                     if not cpe:
                         continue
 
@@ -296,128 +534,162 @@ def construir_indice_cpe(diretorio: str = DIRETORIO_NVD) -> Dict[Tuple[str, str]
                         continue
 
                     key = (cpe["vendor"], cpe["product"])
-                    regra = {
-                        "versionStartIncluding": match.get("versionStartIncluding"),
-                        "versionStartExcluding": match.get("versionStartExcluding"),
-                        "versionEndIncluding": match.get("versionEndIncluding"),
-                        "versionEndExcluding": match.get("versionEndExcluding"),
-                    }
-                    any_version = cpe["version"] in ("*", "-", "", None)
 
-                    # Se vier versão exata E sem faixa -> tratar como igualdade
-                    has_range = any(regra.values())
-                    exact_version = None
-                    if not any_version and not has_range:
-                        exact_version = cpe["version"]
+                    version_rules = {
+                        "versionStartIncluding": cpe_match.get("versionStartIncluding"),
+                        "versionStartExcluding": cpe_match.get("versionStartExcluding"),
+                        "versionEndIncluding": cpe_match.get("versionEndIncluding"),
+                        "versionEndExcluding": cpe_match.get("versionEndExcluding"),
+                    }
+
+                    is_any_version = cpe["version"] in ("*", "-", "", None)
+                    has_range = any(version_rules.values())
 
                     entry = {
                         "cve": cve_id,
-                        "anyVersion": any_version,
-                        "versionRules": regra,
+                        "anyVersion": is_any_version,
+                        "versionRules": version_rules,
                     }
-                    if exact_version:
-                        entry["exactVersion"] = exact_version
 
-                    indice.setdefault(key, []).append(entry)
+                    # Versão exata sem faixa → match por igualdade
+                    if not is_any_version and not has_range:
+                        entry["exactVersion"] = cpe["version"]
 
-    _salvar_indice_cache(indice)
-    return indice
+                    index.setdefault(key, []).append(entry)
+
+    _save_index_cache(index)
+    return index
+
 
 # ==============================
-# Verificação por (vendor, product, version)
+# Consulta de vulnerabilidades por CPE
 # ==============================
 
-def verificar_vulnerabilidades_por_cpe(vendor: str, product: str, version: Optional[str]) -> Tuple[List[str], List[str]]:
+def check_vulnerabilities_by_cpe(
+    vendor: str, product: str, version: Optional[str]
+) -> Tuple[List[str], List[str]]:
     """
-    ## verificar_vulnerabilidades_por_cpe
-    Retorna (confirmadas, suspeitas):
-    - confirmadas: versão dentro da faixa, OU `anyVersion` com versão conhecida,
-      OU `exactVersion` igual.
-    - suspeitas: produto casa mas sem versão do alvo (não há como confirmar).
+    Consulta CVEs para um (vendor, product, version) específico.
+
+    Classificação:
+    - **Confirmadas**: Versão está dentro da faixa, ou é match exato,
+      ou CVE afeta todas as versões e temos versão conhecida.
+    - **Suspeitas**: Produto casa mas não temos versão para confirmar.
+
+    Args:
+        vendor: Vendor NVD (ex: "apache", "openbsd").
+        product: Product NVD (ex: "http_server", "openssh").
+        version: Versão detectada (pode ser None).
+
+    Returns:
+        Tupla (confirmadas, suspeitas) — listas de CVE IDs.
     """
-    indice = construir_indice_cpe()
-    buckets = indice.get((vendor, product), [])
-    confirmadas: List[str] = []
-    suspeitas: List[str] = []
+    index = build_cpe_index()
+    entries = index.get((vendor, product), [])
 
-    for entry in buckets:
-        cve = entry["cve"]
+    confirmed: List[str] = []
+    suspected: List[str] = []
 
+    for entry in entries:
+        cve_id = entry["cve"]
+
+        # CVE afeta todas as versões
         if entry.get("anyVersion"):
             if version:
-                confirmadas.append(cve)
+                confirmed.append(cve_id)
             else:
-                suspeitas.append(cve)
+                suspected.append(cve_id)
             continue
 
+        # Match por versão exata
         exact = entry.get("exactVersion")
         if exact is not None:
-            if version and versoes_iguais(version, exact):
-                confirmadas.append(cve)
+            if version and versions_equal(version, exact):
+                confirmed.append(cve_id)
             elif not version:
-                suspeitas.append(cve)
-            continue  # se há exact, não há faixa
+                suspected.append(cve_id)
+            continue
 
+        # Match por faixa de versão
         rules = entry.get("versionRules") or {}
-        if version and any(rules.values()) and comparar_versao(version, rules):
-            confirmadas.append(cve)
+        if version and any(rules.values()) and version_in_range(version, rules):
+            confirmed.append(cve_id)
         elif not version:
-            suspeitas.append(cve)
+            suspected.append(cve_id)
 
-    return sorted(set(confirmadas)), sorted(set(suspeitas))
+    return sorted(set(confirmed)), sorted(set(suspected))
+
 
 # ==============================
-# API compatível com o projeto
+# API pública (compatível com o projeto)
 # ==============================
 
-def carregar_base_local_cves(diretorio: str = DIRETORIO_NVD, usar_cache: bool = True):
+def carregar_base_local_cves(diretorio: str = NVD_DIR, usar_cache: bool = True):
     """
-    ## carregar_base_local_cves
-    Compatibilidade: apenas garante que o índice esteja pronto (em cache).
+    Garante que o índice CPE está carregado.
+
+    Mantida por compatibilidade. Se usar_cache=False, força rebuild do índice.
+
+    Args:
+        diretorio: Diretório dos JSONs NVD.
+        usar_cache: Se False, limpa caches e reconstrói.
+
+    Returns:
+        Dict vazio (mantido por compatibilidade).
     """
     if not usar_cache:
-        construir_indice_cpe.cache_clear()
+        build_cpe_index.cache_clear()
         try:
             if os.path.exists(NVD_INDEX_PKL):
                 os.remove(NVD_INDEX_PKL)
         except Exception:
             pass
-    _ = construir_indice_cpe(diretorio)
-    return {}  # mantido por compat
+    build_cpe_index(diretorio)
+    return {}
+
 
 def verificar_vulnerabilidades_em_banners(
     banners: Iterable[str],
-    base_cves=None,            # ignorado (compat)
-    detalhado: bool = False
-):
+    base_cves=None,
+    detalhado: bool = False,
+) -> Tuple[List[str], List[str]]:
     """
-    ## verificar_vulnerabilidades_em_banners
-    Recebe banners (ex.: "80:Server: Apache/2.4.49 ...").
-    - Extrai (produto, versão).
-    - Normaliza para (vendor, product).
-    - Consulta índice CPE (any/exact/faixa).
+    Verifica CVEs para uma lista de banners de serviços.
 
-    Retorna:
-      - detalhado=False: lista única (confirmadas + suspeitas, sem duplicatas)
-      - detalhado=True: (confirmadas, suspeitas)
+    Fluxo por banner:
+    1. Extrai (produto, versão) via regex
+    2. Normaliza para (vendor, product) da taxonomia NVD
+    3. Consulta índice CPE
+
+    Args:
+        banners: Lista de strings no formato "porta:banner" (ex: "80:Server: Apache/2.4.49").
+        base_cves: Ignorado (mantido por compatibilidade).
+        detalhado: Se True, retorna (confirmadas, suspeitas) separados.
+
+    Returns:
+        Se detalhado=True: (confirmadas, suspeitas)
+        Se detalhado=False: lista única sem duplicatas
     """
-    confirmadas_agg: List[str] = []
-    suspeitas_agg: List[str] = []
+    all_confirmed: List[str] = []
+    all_suspected: List[str] = []
 
-    for b in banners:
-        raw = b.split(":", 1)[-1] if ":" in b else b
-        info = extrair_nome_versao_banner(raw)
+    for banner_entry in banners:
+        # Remove prefixo de porta ("80:Server: ..." → "Server: ...")
+        raw_banner = banner_entry.split(":", 1)[-1] if ":" in banner_entry else banner_entry
+
+        info = extract_product_version(raw_banner)
         if not info:
             continue
-        produto, versao = info
-        vendor, product = normalizar_produto(produto)
-        c, s = verificar_vulnerabilidades_por_cpe(vendor, product, versao)
-        confirmadas_agg.extend(c)
-        suspeitas_agg.extend(s)
 
-    confirmadas_uniq = sorted(set(confirmadas_agg))
-    suspeitas_uniq = sorted(set(suspeitas_agg))
+        product_name, version = info
+        vendor, product = normalize_product(product_name)
+        confirmed, suspected = check_vulnerabilities_by_cpe(vendor, product, version)
+        all_confirmed.extend(confirmed)
+        all_suspected.extend(suspected)
+
+    confirmed_unique = sorted(set(all_confirmed))
+    suspected_unique = sorted(set(all_suspected))
 
     if detalhado:
-        return confirmadas_uniq, suspeitas_uniq
-    return sorted(set(confirmadas_uniq + suspeitas_uniq))
+        return confirmed_unique, suspected_unique
+    return sorted(set(confirmed_unique + suspected_unique))

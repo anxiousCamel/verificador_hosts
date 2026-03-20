@@ -1,131 +1,164 @@
 """
-# utils.py
+# utils.py — Funções utilitárias do Verificador de Hosts
 
 ## Descrição
-Este módulo contém funções auxiliares utilizadas pelo sistema de verificação de hosts.
-
-### Funcionalidades:
-- Carregamento da tabela de fabricantes OUI (formato Nmap/Wireshark)
-- Solicitação interativa de dados da rede (base e faixa IP)
-- Funções reutilizáveis que evitam duplicação de lógica
+Funções auxiliares reutilizáveis:
+- Carregamento da tabela OUI (fabricantes por MAC, formato Wireshark/Nmap)
+- Detecção de encoding de arquivos (UTF-8, UTF-16 LE/BE)
+- Validação interativa de entrada de rede (base IP, faixa)
 
 ## Autor
 Luiz
-
-## Dependências
-- os
-- rich.console
 """
 
 import os
 from rich.console import Console
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 console = Console()
 
-def _detectar_encoding(caminho: str) -> str:
-    """Detecta BOM rápido: UTF-16 LE/BE, UTF-8; fallback utf-8."""
+
+# ============================
+# Detecção de encoding
+# ============================
+
+def _detect_encoding(filepath: str) -> str:
+    """
+    Detecta encoding via BOM (Byte Order Mark).
+
+    Suporta UTF-16 LE, UTF-16 BE e UTF-8 com BOM. Fallback para UTF-8.
+
+    Args:
+        filepath: Caminho do arquivo.
+
+    Returns:
+        String de encoding compatível com open().
+    """
     try:
-        with open(caminho, "rb") as fb:
-            cab = fb.read(4)
-        if cab.startswith(b"\xff\xfe"):
+        with open(filepath, "rb") as f:
+            header = f.read(4)
+        if header.startswith(b"\xff\xfe"):
             return "utf-16-le"
-        if cab.startswith(b"\xfe\xff"):
+        if header.startswith(b"\xfe\xff"):
             return "utf-16-be"
-        if cab.startswith(b"\xef\xbb\xbf"):
+        if header.startswith(b"\xef\xbb\xbf"):
             return "utf-8-sig"
     except Exception:
         pass
-    return "utf-8"  # fallback seguro
+    return "utf-8"
 
 
-def carregar_tabela_oui(path='manuf'):
+# ============================
+# Tabela OUI (fabricantes)
+# ============================
+
+def carregar_tabela_oui(path: str = "manuf") -> dict:
     """
-    Carrega tabela OUI (Wireshark/Nmap) e indexa por:
-    - FC52CE / FC:52:CE (3 bytes)
-    - e também 4/5 bytes quando existirem no arquivo.
+    Carrega tabela OUI no formato Wireshark/Nmap.
+
+    O arquivo contém mapeamentos de prefixos MAC (OUI) para nomes de fabricantes.
+    Formato: "OUI<TAB>Short<TAB>Long description"
+
+    Indexa por múltiplas representações para lookup flexível:
+    - Com dois-pontos: "FC:52:CE"
+    - Sem separador: "FC52CE"
+    - Para OUIs de 3, 4 e 5 bytes (suporte a MA-L, MA-M, MA-S do IEEE)
+
+    Args:
+        path: Caminho do arquivo OUI (relativo ao diretório do módulo).
+
+    Returns:
+        Dicionário {oui_string: nome_fabricante}.
     """
     if not os.path.isabs(path):
-        path = os.path.join(BASE_DIR, path)
+        path = os.path.join(_BASE_DIR, path)
 
-    fabricantes = {}
+    oui_table: dict = {}
     if not os.path.exists(path):
         console.print(f"[red]Arquivo '{path}' não encontrado.[/red]")
-        return fabricantes
+        return oui_table
 
-    enc = _detectar_encoding(path)
+    encoding = _detect_encoding(path)
 
     try:
-        with open(path, "r", encoding=enc, errors="strict") as f:
-            for linha in f:
-                s = linha.strip()
-                if not s or s.startswith("#"):
+        with open(path, "r", encoding=encoding, errors="strict") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
                     continue
 
-                # Divide por tab; formato Wireshark: "OUI<TAB>Short<TAB>Long ..."
-                partes = s.split("\t")
-                if len(partes) < 2:
-                    # fallback: espaço(s) quando não houver tab
-                    partes = s.split()
-                    if len(partes) < 2:
+                # Parse: OUI<TAB>Short<TAB>Long...
+                parts = stripped.split("\t")
+                if len(parts) < 2:
+                    parts = stripped.split()
+                    if len(parts) < 2:
                         continue
 
-                raw = partes[0].upper().replace("-", ":")
-                grupos = [g.strip() for g in raw.split(":") if g.strip()]
-                if len(grupos) < 3:
+                raw_oui = parts[0].upper().replace("-", ":")
+                groups = [g.strip() for g in raw_oui.split(":") if g.strip()]
+                if len(groups) < 3:
                     continue
 
-                nome = " ".join(partes[1:]).strip()
-                # chaves de 3, 4 e 5 bytes
-                for nbytes in (3, 4, 5):
-                    if len(grupos) >= nbytes:
-                        oui_colon = ":".join(grupos[:nbytes])               # FC:52:CE
-                        oui_plain = oui_colon.replace(":", "")               # FC52CE
-                        fabricantes[oui_colon] = nome
-                        fabricantes[oui_plain] = nome
+                name = " ".join(parts[1:]).strip()
+
+                # Indexa OUI de 3, 4 e 5 bytes (duas representações cada)
+                for num_bytes in (3, 4, 5):
+                    if len(groups) >= num_bytes:
+                        with_colons = ":".join(groups[:num_bytes])
+                        without_colons = with_colons.replace(":", "")
+                        oui_table[with_colons] = name
+                        oui_table[without_colons] = name
+
     except Exception as e:
-        console.print(f"[red]Falha ao ler '{path}' ({enc}): {e}[/red]")
+        console.print(f"[red]Falha ao ler '{path}' ({encoding}): {e}[/red]")
 
-    if not fabricantes:
-        console.print(f"[yellow]Aviso: tabela OUI vazia após ler {path} ({enc}).[/yellow]")
-    return fabricantes
+    if not oui_table:
+        console.print(f"[yellow]Aviso: tabela OUI vazia após ler {path}.[/yellow]")
+
+    return oui_table
 
 
-def solicitar_dados_input():
+# ============================
+# Input interativo
+# ============================
+
+def solicitar_dados_input() -> tuple:
     """
-    Solicita os dados de entrada ao usuário no terminal:
-    - Base de rede no formato 10.101.X
-    - Faixa de IPs (início e fim)
+    Solicita dados da rede ao usuário via terminal.
 
-    Valida as entradas antes de prosseguir.
+    Pede:
+    - Base da rede (ex: "10.101.6")
+    - IP inicial e final da faixa (1-254)
 
-    Retorna:
-        tuple: (ip_base: str, ip_inicio: int, ip_fim: int)
+    Valida formato e intervalo antes de retornar.
 
-    Exemplo de retorno:
-        ("10.101.6", 1, 150)
+    Returns:
+        Tupla (ip_base: str, ip_inicio: int, ip_fim: int).
+
+    Raises:
+        KeyboardInterrupt: Se o usuário cancelar (Ctrl+C).
     """
     console.print("==============================================", style="cyan")
     console.print(" Verificador de Hosts com Auditoria de Segurança", style="bold white")
     console.print("==============================================\n", style="cyan")
 
-    # Solicita a base da rede
+    # Base da rede
     while True:
         ip_base = input("Digite a base da rede (ex: 10.101.6): ").strip()
-        if ip_base.count('.') == 2 and all(p.isdigit() for p in ip_base.split('.')):
+        octets = ip_base.split(".")
+        if len(octets) == 3 and all(o.isdigit() for o in octets):
             break
-        console.print("[red]Base inválida. Use o formato: 10.101.X[/red]")
+        console.print("[red]Base inválida. Use o formato: X.X.X (ex: 10.101.6)[/red]")
 
-    # Solicita IP inicial e final
+    # Faixa de IPs
     while True:
         try:
-            inicio = int(input("IP inicial (ex: 1): "))
-            fim = int(input("IP final (ex: 254): "))
-            if 0 < inicio <= 254 and 0 < fim <= 254 and inicio <= fim:
+            start = int(input("IP inicial (ex: 1): "))
+            end = int(input("IP final (ex: 254): "))
+            if 0 < start <= 254 and 0 < end <= 254 and start <= end:
                 break
-            else:
-                console.print("[red]Valores fora do intervalo válido (1 a 254).[/red]")
+            console.print("[red]Valores fora do intervalo válido (1 a 254).[/red]")
         except ValueError:
-            console.print("[red]Digite números válidos para os IPs.[/red]")
+            console.print("[red]Digite números válidos.[/red]")
 
-    return ip_base, inicio, fim
+    return ip_base, start, end

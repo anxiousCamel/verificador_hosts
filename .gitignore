@@ -1,7 +1,7 @@
 # =====================
 # Ignorar arquivos e diretórios de cache Python
 # =====================
-__pycache__/           # Cache compilado dos módulos Python
+**/__pycache__/        # Cache compilado dos módulos Python
 *.py[cod]              # Arquivos .pyc, .pyo, .pyd
 *$py.class             # Bytecode antigo do Jython
 
@@ -53,3 +53,5 @@ auditoria_hosts*       # Resultados da auditoria de hosts
 Thumbs.db              # Windows
 
 *csv
+.scan_cache.json       # Cache de scan
+pentest_report*.json   # Relatórios de pentest

@@ -1,27 +1,19 @@
 """
-# relatorio.py
+# relatorio.py — Geração de relatórios da auditoria de rede
 
 ## Descrição
-Este módulo é responsável por gerar relatórios visuais e exportações dos resultados
-da auditoria de rede realizada pelo sistema.
+Gera relatórios visuais e exportações dos resultados da varredura:
+- Tabela colorida no terminal via Rich (cores por criticidade)
+- Exportação CSV com separador ';' (compatível com Excel em locales PT-BR)
 
-### Funcionalidades:
-- Exibe os dados dos hosts em uma tabela colorida no terminal usando `rich`.
-- Aplica cores específicas para status, MAC, SO, portas críticas, banners e latência.
-- Exporta os dados para um arquivo `.csv` com separador `;`.
-
-### Integração:
-Este módulo depende do dicionário de status (`status_dict`) construído pelo scanner.
-Utiliza também a constante `PORTAS_CRITICAS` do módulo `scan`.
+## Cores aplicadas
+- **Status**: verde (ONLINE) / vermelho (OFFLINE)
+- **Portas**: vermelho (críticas: SSH, Telnet, RDP, SMB, etc.) / azul (outras)
+- **Latência**: verde (<10ms) / amarelo (<50ms) / laranja (<150ms) / vermelho (>150ms)
+- **MAC**: ciano (detectado) / cinza (N/D)
 
 ## Autor
 Luiz
-
-## Dependências
-- rich.console
-- rich.table
-- rich.box
-- csv
 """
 
 from rich.console import Console
@@ -29,126 +21,148 @@ from rich.table import Table
 from rich import box
 import csv
 
-from scan import PORTAS_CRITICAS
+from scan import CRITICAL_PORTS
 
 console = Console()
 
 
-def gerar_tabela(status_dict):
+def gerar_tabela(status_dict: dict) -> Table:
     """
-    Gera uma tabela visual no terminal com os dados da auditoria de rede.
+    Gera tabela Rich colorida com os resultados da auditoria.
 
-    Parâmetros:
-        status_dict (dict): Dicionário contendo os dados coletados por IP.
+    Args:
+        status_dict: Dicionário IP -> dados do host (gerado pelo scanner).
 
-    Retorna:
-        Table (rich.table.Table): Tabela formatada para visualização no terminal.
+    Returns:
+        rich.table.Table formatada para exibição no terminal.
     """
-    tabela = Table(title="Status dos Hosts (Auditoria de Segurança)", box=box.ROUNDED)
+    table = Table(title="Status dos Hosts (Auditoria de Segurança)", box=box.ROUNDED)
 
-    tabela.add_column("IP", style="bold", no_wrap=True)
-    tabela.add_column("Status", style="bold")
-    tabela.add_column("Hostname")
-    tabela.add_column("MAC")
-    tabela.add_column("Latência")
-    tabela.add_column("Fabricante")
-    tabela.add_column("SO")
-    tabela.add_column("Portas")
-    tabela.add_column("Banners")
-    tabela.add_column("Vulnerabilidades")
+    table.add_column("IP", style="bold", no_wrap=True)
+    table.add_column("Status", style="bold")
+    table.add_column("Hostname")
+    table.add_column("MAC")
+    table.add_column("Latência")
+    table.add_column("Fabricante")
+    table.add_column("SO")
+    table.add_column("Portas")
+    table.add_column("Banners")
+    table.add_column("Vulnerabilidades")
 
-    # Ordena os IPs corretamente (não alfabeticamente)
-    for ip in sorted(status_dict, key=lambda ip: tuple(map(int, ip.split(".")))):
-        s = status_dict[ip]
+    # Ordena por octeto numérico (não alfabeticamente)
+    sorted_ips = sorted(status_dict, key=lambda ip: tuple(map(int, ip.split("."))))
 
-        # === Formatação de colunas ===
-        status_color = "[green]ONLINE[/green]" if s["status"] == "ONLINE" else "[red]OFFLINE[/red]"
+    for ip in sorted_ips:
+        host = status_dict[ip]
 
-        nome_fmt = (
-            f"[grey30]{s['nome']}[/grey30]"
-            if s["nome"] in ["Nome N/D", "-"]
-            else s["nome"]
-        )
-
-        mac_fmt = (
-            f"[red]{s['mac']}[/red]"
-            if s["mac"] == "MAC N/D"
-            else f"[grey30]{s['mac']}[/grey30]"
-            if s["mac"] == "-"
-            else f"[bold cyan]{s['mac']}[/bold cyan]"
-        )
-
-        fab_fmt = (
-            f"[grey30]{s['fabricante']}[/grey30]"
-            if s["fabricante"] in ["Fabricante N/D", "-"]
-            else s["fabricante"]
-        )
-
+        # Formatação condicional por campo
         ip_fmt = (
-            f"[yellow]{ip}[/yellow]"
-            if s["status"] == "ONLINE"
+            f"[yellow]{ip}[/yellow]" if host["status"] == "ONLINE"
             else f"[grey30]{ip}[/grey30]"
         )
 
-        # Porta crítica em vermelho, outras em azul
-        portas_fmt = (
-            ", ".join(
-                f"[red]{p}[/red]" if int(p) in PORTAS_CRITICAS else f"[blue]{p}[/blue]"
-                for p in s["portas"]
-            )
-            if s["portas"]
-            else "-"
+        status_fmt = (
+            "[green]ONLINE[/green]" if host["status"] == "ONLINE"
+            else "[red]OFFLINE[/red]"
         )
 
-        # Cores por faixa de latência
-        lat = s["latencia"]
-        if lat == -1:
-            latencia_fmt = "[grey58]-[/grey58]"
-        elif lat <= 10:
-            latencia_fmt = f"[green]{lat:.1f} ms[/green]"
-        elif lat <= 50:
-            latencia_fmt = f"[yellow]{lat:.1f} ms[/yellow]"
-        elif lat <= 150:
-            latencia_fmt = f"[orange3]{lat:.1f} ms[/orange3]"
-        else:
-            latencia_fmt = f"[red]{lat:.1f} ms[/red]"
-
-        banners_fmt = ", ".join(s["banners"]) if s["banners"] else "-"
-        vulns_fmt = ", ".join(s.get("vulnerabilidades", [])) if s.get("vulnerabilidades") else "-"
-
-        # Adiciona linha na tabela
-        tabela.add_row(
-            ip_fmt, status_color, nome_fmt, mac_fmt, latencia_fmt,
-            fab_fmt, s["so"], portas_fmt, banners_fmt, vulns_fmt
+        hostname_fmt = (
+            f"[grey30]{host['nome']}[/grey30]"
+            if host["nome"] in ("Nome N/D", "-", "N/D")
+            else host["nome"]
         )
 
-    return tabela
+        mac_fmt = _format_mac(host["mac"])
+
+        fab_fmt = (
+            f"[grey30]{host['fabricante']}[/grey30]"
+            if host["fabricante"] in ("Fabricante N/D", "-", "N/D")
+            else host["fabricante"]
+        )
+
+        latency_fmt = _format_latency(host["latencia"])
+
+        ports_fmt = _format_ports(host["portas"])
+
+        banners_fmt = ", ".join(host["banners"]) if host["banners"] else "-"
+        vulns_fmt = ", ".join(host.get("vulnerabilidades", [])) or "-"
+
+        table.add_row(
+            ip_fmt, status_fmt, hostname_fmt, mac_fmt, latency_fmt,
+            fab_fmt, host["so"], ports_fmt, banners_fmt, vulns_fmt,
+        )
+
+    return table
 
 
-def exportar_csv(status_dict, caminho="auditoria_hosts.csv"):
+def _format_mac(mac: str) -> str:
+    """Aplica cor ao MAC: ciano se detectado, vermelho se 'MAC N/D', cinza se '-'."""
+    if mac == "MAC N/D":
+        return f"[red]{mac}[/red]"
+    if mac in ("-", "N/D"):
+        return f"[grey30]{mac}[/grey30]"
+    return f"[bold cyan]{mac}[/bold cyan]"
+
+
+def _format_latency(lat: float) -> str:
+    """Aplica cor à latência por faixa: verde/amarelo/laranja/vermelho."""
+    if lat == -1:
+        return "[grey58]-[/grey58]"
+    if lat <= 10:
+        return f"[green]{lat:.1f} ms[/green]"
+    if lat <= 50:
+        return f"[yellow]{lat:.1f} ms[/yellow]"
+    if lat <= 150:
+        return f"[orange3]{lat:.1f} ms[/orange3]"
+    return f"[red]{lat:.1f} ms[/red]"
+
+
+def _format_ports(ports: list) -> str:
+    """Portas críticas em vermelho, demais em azul."""
+    if not ports:
+        return "-"
+    formatted = []
+    for port_str in ports:
+        try:
+            port_num = int(port_str)
+            color = "red" if port_num in CRITICAL_PORTS else "blue"
+            formatted.append(f"[{color}]{port_str}[/{color}]")
+        except ValueError:
+            formatted.append(port_str)
+    return ", ".join(formatted)
+
+
+def exportar_csv(status_dict: dict, caminho: str = "auditoria_hosts.csv") -> None:
     """
-    Exporta os dados da auditoria para um arquivo CSV.
+    Exporta resultados da auditoria para arquivo CSV.
 
-    Parâmetros:
-        status_dict (dict): Dicionário contendo os dados por IP.
-        caminho (str): Caminho do arquivo de saída (padrão: auditoria_hosts.csv).
+    Usa separador ';' para compatibilidade com Excel em locales que
+    usam ',' como separador decimal.
+
+    Args:
+        status_dict: Dicionário IP -> dados do host.
+        caminho: Caminho do arquivo de saída.
     """
     try:
-        with open(caminho, "w", newline='', encoding='utf-8') as f:
-            writer = csv.writer(f, delimiter=';')
+        with open(caminho, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f, delimiter=";")
             writer.writerow([
                 "IP", "Status", "Hostname", "MAC", "Fabricante",
-                "SO", "Portas", "Banners", "Vulnerabilidades", "Latência (ms)"
+                "SO", "Portas", "Banners", "Vulnerabilidades", "Latência (ms)",
             ])
 
-            for ip, s in status_dict.items():
-                portas_texto = ", ".join(s["portas"])
-                banners_texto = ", ".join(s["banners"])
-                vulns_texto = ", ".join(s.get("vulnerabilidades", []))
-
+            for ip, host in status_dict.items():
                 writer.writerow([
-                    ip, s["status"], s["nome"], s["mac"], s["fabricante"],
-                    s["so"], portas_texto, banners_texto, vulns_texto, s["latencia"]
+                    ip,
+                    host["status"],
+                    host["nome"],
+                    host["mac"],
+                    host["fabricante"],
+                    host["so"],
+                    ", ".join(host["portas"]),
+                    ", ".join(host["banners"]),
+                    ", ".join(host.get("vulnerabilidades", [])),
+                    host["latencia"],
                 ])
     except Exception as e:
         console.print(f"[red]Erro ao exportar CSV:[/red] {e}")
