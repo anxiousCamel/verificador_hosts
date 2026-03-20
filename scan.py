@@ -473,12 +473,7 @@ def get_mac_from_arp(ip: str) -> str:
 
 def detect_os_by_ttl(ttl: int) -> str:
     """
-    Heurística de detecção de SO baseada no TTL do ICMP.
-
-    Referência de TTL padrão:
-    - ~64:  Linux/Unix/macOS
-    - ~128: Windows
-    - ~255: Cisco IOS, NX-OS, appliances de rede
+    Heurística básica de SO baseada apenas no TTL (sem contexto de portas).
 
     Args:
         ttl: Valor TTL extraído do ping.
@@ -495,6 +490,81 @@ def detect_os_by_ttl(ttl: int) -> str:
     if ttl <= 255:
         return "Cisco/Appliance"
     return "Desconhecido"
+
+
+def detect_os_enhanced(ttl: int, open_ports: List[Tuple[int, str]]) -> str:
+    """
+    Detecção de SO combinando TTL + portas abertas + banners.
+
+    Muito mais preciso que TTL sozinho. Usa evidências múltiplas:
+    - TTL como base (64=Linux, 128=Windows, 255=Cisco)
+    - Portas características (3389=Windows, 22=Linux, etc.)
+    - Banners de serviços (OpenSSH=Linux, Microsoft-IIS=Windows, etc.)
+
+    Cada evidência adiciona "votos" para um SO. O SO com mais votos vence.
+    Em empate, o TTL tem prioridade.
+
+    Args:
+        ttl: Valor TTL do ping (-1 se não disponível).
+        open_ports: Lista de (porta, banner) das portas abertas.
+
+    Returns:
+        String com SO estimado e confiança (ex: "Windows", "Linux/Unix").
+    """
+    # Sistema de votação por SO
+    votes = {"Linux/Unix": 0, "Windows": 0, "Cisco/Appliance": 0}
+
+    # --- Evidência 1: TTL (peso 2) ---
+    if 0 < ttl <= 70:
+        votes["Linux/Unix"] += 2
+    elif 70 < ttl <= 140:
+        votes["Windows"] += 2
+    elif 140 < ttl <= 255:
+        votes["Cisco/Appliance"] += 2
+
+    # --- Evidência 2: Portas características (peso 1 cada) ---
+    port_numbers = {p for p, _ in open_ports}
+
+    # Portas tipicamente Windows
+    windows_ports = {135, 139, 445, 3389, 5985, 5986}
+    if port_numbers & windows_ports:
+        votes["Windows"] += len(port_numbers & windows_ports)
+
+    # Portas tipicamente Linux (sem equivalente Windows comum)
+    if 22 in port_numbers and not (port_numbers & {3389, 135, 445}):
+        votes["Linux/Unix"] += 1
+
+    # --- Evidência 3: Banners (peso 3 — mais confiável) ---
+    for _, banner in open_ports:
+        banner_lower = banner.lower()
+
+        # Windows indicators
+        if any(w in banner_lower for w in (
+            "microsoft", "iis", "windows", "win32", "win64",
+            "exchange", "outlook", "ms-wbt-server",
+        )):
+            votes["Windows"] += 3
+
+        # Linux indicators
+        if any(w in banner_lower for w in (
+            "openssh", "ubuntu", "debian", "centos", "redhat",
+            "fedora", "alpine", "linux", "nginx",
+        )):
+            votes["Linux/Unix"] += 3
+
+        # Cisco/Network appliance indicators
+        if any(w in banner_lower for w in (
+            "cisco", "ios", "nx-os", "junos", "fortinet",
+            "fortigate", "paloalto", "mikrotik",
+        )):
+            votes["Cisco/Appliance"] += 3
+
+    # Determina vencedor
+    if all(v == 0 for v in votes.values()):
+        return "N/D"
+
+    winner = max(votes, key=votes.get)
+    return winner
 
 
 def lookup_manufacturer(mac: str, oui_table: Dict[str, str]) -> str:
@@ -588,7 +658,6 @@ def scan_host(
     hostname = resolve_hostname(ip) if RESOLVE_HOSTNAME else "N/D"
     mac = get_mac_from_arp(ip)
     manufacturer = lookup_manufacturer(mac, oui_table)
-    os_guess = detect_os_by_ttl(ttl)
 
     # Port scan com banner grabbing em conexão única
     open_ports = scan_ports(
@@ -596,6 +665,9 @@ def scan_host(
         timeout=socket_timeout,
         workers=port_workers,
     )
+
+    # Detecção de SO combinando TTL + portas + banners (mais preciso que só TTL)
+    os_guess = detect_os_enhanced(ttl, open_ports)
 
     port_numbers = [str(port) for port, _ in open_ports]
     banners = [f"{port}:{banner}" for port, banner in open_ports]

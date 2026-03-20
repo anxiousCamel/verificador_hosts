@@ -39,6 +39,7 @@ from config import auto_configurar
 from utils import solicitar_dados_input, carregar_tabela_oui
 from relatorio import gerar_tabela, exportar_csv
 from atualizar_nvd import atualizar_base_nvd
+from cache import ScanCache
 
 # ==============================
 # Constantes
@@ -504,8 +505,9 @@ def main():
         console.print("[red]Nenhum IP no intervalo informado.[/red]")
         return
 
-    # 5) Varredura com governança adaptativa
+    # 5) Varredura com governança adaptativa + cache
     results: Dict[str, dict] = {}
+    scan_cache = ScanCache()
     spinner = _start_spinner("Verificando hosts e portas")
 
     host_workers = int(config["max_workers_hosts"])
@@ -522,17 +524,38 @@ def main():
         fast_threshold_sec=max(12.0, socket_timeout * 3),
     )
 
+    # Separar IPs em cacheados e a-varrer
+    ips_to_scan = []
+    cache_hits = 0
+    for ip in ip_list:
+        cached = scan_cache.get(ip)
+        if cached:
+            results[ip] = cached
+            cache_hits += 1
+        else:
+            ips_to_scan.append(ip)
+
+    if cache_hits > 0:
+        console.print(
+            f"[bold green]Cache:[/bold green] {cache_hits} hosts recuperados do cache, "
+            f"{len(ips_to_scan)} a varrer"
+        )
+
+    total_to_scan = len(ips_to_scan)
     total_ips = len(ip_list)
-    progress_total = tqdm(total=total_ips, desc="Total", ncols=100, position=0, dynamic_ncols=True)
+    progress_total = tqdm(
+        total=total_ips, initial=cache_hits,
+        desc="Total", ncols=100, position=0, dynamic_ncols=True,
+    )
 
     try:
         pos = 0
         batch_idx = 0
 
-        while pos < total_ips:
+        while pos < total_to_scan:
             batch_idx += 1
-            batch_end = min(total_ips, pos + batch_size)
-            batch_ips = ip_list[pos:batch_end]
+            batch_end = min(total_to_scan, pos + batch_size)
+            batch_ips = ips_to_scan[pos:batch_end]
             pos = batch_end
 
             t0 = time.time()
@@ -565,11 +588,16 @@ def main():
                             "latencia": -1.0, "erro": str(exc),
                         }
                     results[result["ip"]] = result
+                    scan_cache.put(result["ip"], result)  # Atualiza cache
                     completed += 1
                     progress_batch.update(1)
                     progress_total.update(1)
 
             progress_batch.close()
+
+            # Salva cache após cada lote (resiliência a crashes)
+            scan_cache.save()
+
             duration = time.time() - t0
 
             # Governança: ajustar parâmetros se necessário
@@ -588,6 +616,7 @@ def main():
 
     finally:
         spinner.set()
+        scan_cache.save()  # Salva cache final (mesmo em caso de Ctrl+C)
         try:
             progress_total.close()
         except Exception:

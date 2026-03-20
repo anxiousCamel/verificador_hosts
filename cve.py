@@ -71,21 +71,33 @@ CPE_PART_ALLOWED = os.environ.get("CPE_PART_ALLOWED", "a")
 
 # Mapeia nomes comuns de banners para (vendor, product) da taxonomia NVD
 _PRODUCT_ALIASES: Dict[str, Tuple[str, str]] = {
-    "openssh":    ("openbsd", "openssh"),
-    "apache":     ("apache", "http_server"),
-    "httpd":      ("apache", "http_server"),
-    "nginx":      ("nginx", "nginx"),
-    "lighttpd":   ("lighttpd", "lighttpd"),
-    "mysql":      ("oracle", "mysql"),
-    "mariadb":    ("mariadb", "mariadb"),
-    "postgresql":  ("postgresql", "postgresql"),
-    "openssl":    ("openssl", "openssl"),
-    "proftpd":    ("proftpd_project", "proftpd"),
-    "pureftpd":   ("pureftpd", "pureftpd"),
-    "vsftpd":     ("vsftpd", "vsftpd"),
-    "opensmtpd":  ("openbsd", "opensmtpd"),
-    "postfix":    ("postfix", "postfix"),
-    "dovecot":    ("dovecot", "dovecot"),
+    # SSH
+    "openssh":       ("openbsd", "openssh"),
+    # Web servers
+    "apache":        ("apache", "http_server"),
+    "httpd":         ("apache", "http_server"),
+    "nginx":         ("nginx", "nginx"),
+    "lighttpd":      ("lighttpd", "lighttpd"),
+    "microsoft-iis": ("microsoft", "internet_information_services"),
+    # Databases
+    "mysql":         ("oracle", "mysql"),
+    "mariadb":       ("mariadb", "mariadb"),
+    "postgresql":    ("postgresql", "postgresql"),
+    "redis":         ("redis", "redis"),
+    "mongodb":       ("mongodb", "mongodb"),
+    # TLS
+    "openssl":       ("openssl", "openssl"),
+    # FTP
+    "proftpd":       ("proftpd_project", "proftpd"),
+    "pureftpd":      ("pureftpd", "pure-ftpd"),
+    "pure-ftpd":     ("pureftpd", "pure-ftpd"),
+    "vsftpd":        ("vsftpd_project", "vsftpd"),
+    "ftpd":          ("openbsd", "ftpd"),
+    # Mail
+    "opensmtpd":     ("openbsd", "opensmtpd"),
+    "postfix":       ("postfix", "postfix"),
+    "dovecot":       ("dovecot", "dovecot"),
+    "exim":          ("exim", "exim"),
 }
 
 
@@ -113,13 +125,23 @@ def normalize_product(name: str) -> Tuple[str, str]:
 
 def extract_product_version(banner: str) -> Optional[Tuple[str, str]]:
     """
-    Extrai (produto, versão) de um banner de serviço.
+    Extrai (produto, versão) de um banner de serviço usando fingerprinting avançado.
 
-    Padrões reconhecidos:
-    - "Server: Apache/2.4.49 ..." → ("apache", "2.4.49")
-    - "OpenSSH_8.2p1 ..."        → ("openssh", "8.2p1")
-    - "nginx/1.24.0"             → ("nginx", "1.24.0")
-    - "produto v1.2.3"           → ("produto", "1.2.3")
+    Usa uma cadeia de regexes especializados, ordenados do mais específico ao
+    mais genérico. Cada padrão cobre um formato real de banner encontrado em
+    redes de produção.
+
+    Padrões reconhecidos (exemplos):
+    - "Server: Apache/2.4.49"           → ("apache", "2.4.49")
+    - "OpenSSH_8.2p1 Ubuntu-4ubuntu0.5" → ("openssh", "8.2p1")
+    - "220 ProFTPD 1.3.5a Server"       → ("proftpd", "1.3.5a")
+    - "Microsoft-IIS/10.0"              → ("microsoft-iis", "10.0")
+    - "220 (vsFTPd 3.0.3)"              → ("vsftpd", "3.0.3")
+    - "MySQL 5.7.42"                    → ("mysql", "5.7.42")
+    - "PostgreSQL 15.2"                 → ("postgresql", "15.2")
+    - "Exim 4.96"                       → ("exim", "4.96")
+    - "Dovecot ready."                  → ("dovecot", None) [sem versão]
+    - "nginx/1.24.0"                    → ("nginx", "1.24.0")
 
     Args:
         banner: String do banner.
@@ -132,18 +154,102 @@ def extract_product_version(banner: str) -> Optional[Tuple[str, str]]:
 
     text = banner.strip()
 
-    # Padrão: nome/versão ou nome vX.Y.Z (com sufixos distro como -1ubuntu1)
-    match = re.search(
+    # --- Padrões específicos (mais confiáveis, testados primeiro) ---
+
+    # SSH: "SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5"
+    m = re.search(r'OpenSSH[_\s](\d+\.\d+[a-z0-9]*)', text, re.IGNORECASE)
+    if m:
+        return ("openssh", m.group(1))
+
+    # FTP: "220 ProFTPD 1.3.5a Server" / "220 (vsFTPd 3.0.3)"
+    m = re.search(r'(?:Pro)?FTPd?\s+v?(\d+\.\d+(?:\.\d+)?[a-z]?)', text, re.IGNORECASE)
+    if m:
+        product = "proftpd" if "proftp" in text.lower() else "vsftpd" if "vsftp" in text.lower() else "ftpd"
+        return (product, m.group(1))
+
+    # Pure-FTPd: "220---------- Welcome to Pure-FTPd [privsep] ----------"
+    m = re.search(r'Pure-FTPd', text, re.IGNORECASE)
+    if m:
+        ver_m = re.search(r'Pure-FTPd\s+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+        return ("pure-ftpd", ver_m.group(1) if ver_m else None)
+
+    # IIS: "Microsoft-IIS/10.0" / "Server: Microsoft-IIS/8.5"
+    m = re.search(r'Microsoft-IIS[/\s]+(\d+\.\d+)', text, re.IGNORECASE)
+    if m:
+        return ("microsoft-iis", m.group(1))
+
+    # Apache: "Server: Apache/2.4.49" / "Apache/2.4.49 (Ubuntu)"
+    m = re.search(r'Apache(?:/|\s+HTTP\s+Server\s*/?\s*)(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("apache", m.group(1))
+
+    # nginx: "nginx/1.24.0" / "Server: nginx/1.18.0 (Ubuntu)"
+    m = re.search(r'nginx[/\s]+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("nginx", m.group(1))
+
+    # lighttpd: "lighttpd/1.4.63"
+    m = re.search(r'lighttpd[/\s]+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("lighttpd", m.group(1))
+
+    # MySQL/MariaDB: "5.7.42-0ubuntu0.18.04.1" / "10.6.12-MariaDB"
+    m = re.search(r'(\d+\.\d+\.\d+)(?:\S*?)[- ]?MariaDB', text, re.IGNORECASE)
+    if m:
+        return ("mariadb", m.group(1))
+    m = re.search(r'MySQL\s*[/\s]?(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("mysql", m.group(1))
+
+    # PostgreSQL: "PostgreSQL 15.2 on x86_64"
+    m = re.search(r'PostgreSQL\s+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("postgresql", m.group(1))
+
+    # Redis: "Redis version 7.0.5" / "redis_version:7.0.5"
+    m = re.search(r'[Rr]edis(?:\s+version|_version)?[:\s]+(\d+\.\d+(?:\.\d+)?)', text)
+    if m:
+        return ("redis", m.group(1))
+
+    # Exim: "220 mail.example.com ESMTP Exim 4.96"
+    m = re.search(r'Exim\s+(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("exim", m.group(1))
+
+    # Postfix: "220 mail.example.com ESMTP Postfix"
+    m = re.search(r'Postfix(?:\s+(\d+\.\d+(?:\.\d+)?))?', text, re.IGNORECASE)
+    if m:
+        return ("postfix", m.group(1))
+
+    # Dovecot: "* OK [CAPABILITY ...] Dovecot ready."
+    m = re.search(r'Dovecot(?:\s+(\d+\.\d+(?:\.\d+)?))?', text, re.IGNORECASE)
+    if m:
+        return ("dovecot", m.group(1))
+
+    # OpenSSL em banners: "OpenSSL/1.1.1" (geralmente junto com outro produto)
+    m = re.search(r'OpenSSL[/\s]+(\d+\.\d+\.\d+[a-z]*)', text, re.IGNORECASE)
+    if m:
+        return ("openssl", m.group(1))
+
+    # MongoDB: "MongoDB version v7.0.2"
+    m = re.search(r'MongoDB\s+(?:version\s+)?v?(\d+\.\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if m:
+        return ("mongodb", m.group(1))
+
+    # --- Padrões genéricos (fallback) ---
+
+    # nome/versão ou nome vX.Y.Z (com sufixos distro como -1ubuntu1)
+    m = re.search(
         r'([A-Za-z0-9\-_]+)[/\s]v?([0-9]+(?:\.[0-9a-z]+){0,3}(?:[-_][0-9a-z\.]+)?)',
         text, flags=re.IGNORECASE,
     )
-    if match:
-        return (match.group(1).strip().lower(), match.group(2))
+    if m:
+        return (m.group(1).strip().lower(), m.group(2))
 
-    # Padrão: nome_versão (ex: OpenSSH_8.2p1)
-    match = re.search(r'([A-Za-z0-9\-_]+)_([0-9]+[0-9a-zA-Z\.\-]*)', text)
-    if match:
-        return (match.group(1).strip().lower(), match.group(2))
+    # nome_versão (ex: OpenSSH_8.2p1)
+    m = re.search(r'([A-Za-z0-9\-_]+)_([0-9]+[0-9a-zA-Z\.\-]*)', text)
+    if m:
+        return (m.group(1).strip().lower(), m.group(2))
 
     return None
 
