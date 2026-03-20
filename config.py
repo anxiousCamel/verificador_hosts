@@ -1,33 +1,35 @@
 """
-# config.py (Conservador)
+# config.py — Auto-configuração conservadora do scanner
 
-## Ideia
-- Modo define **features** (leve vs completo), não agressividade.
-- Paralelismo sempre conservador para não travar (independe de CPU/RAM).
-- Só reduz quando necessário (governança adaptativa fica no __main__.py).
-- ENV podem sobrescrever, mas com *clamps* duros.
+## Descrição
+Define presets de configuração por modo (leve/completo/auto) e aplica
+overrides de variáveis de ambiente com limites rígidos (clamps).
 
-## Saída (dict) consumida por __main__.py e scan.py
-{
-  "max_workers_hosts": int,   # conservador
-  "max_workers_portas": int,  # conservador
-  "timeout_socket": float,
-  "max_sockets": int,         # baixo para evitar saturar Windows
-  "batch_size": int,          # pequeno e previsível
-  "resolve_hostname": bool,   # leve=False, completo=True
-  "tcp_only": bool,           # leve=True,  completo=False
-  "skip_cve": bool,           # leve=True,  completo=False
-  "skip_nvd_update": bool,    # leve=True,  completo=False
-  "mode": "leve"|"completo"|"auto",
-  "adaptive": bool            # True => __main__ pode reduzir mais se precisar
-}
+Filosofia:
+- O modo define **features** (resolver hostname, checar CVEs, etc.)
+- O paralelismo é sempre conservador para não travar a máquina
+- Clamps duros impedem valores perigosos vindos de ENV
+- A governança adaptativa (__main__.py) pode reduzir ainda mais em runtime
 
-## ENV (opcionais; sempre respeitados com clamps)
-- VH_MODE: "leve"|"completo"|"auto" (default: auto)
-- VH_ASK_MODE: 0|1 (default: 0) se 1 e TTY, pergunta o modo
-- VH_MAX_HOSTS_WORKERS, VH_MAX_PORTS_WORKERS, VH_TIMEOUT_SOCKET
-- VH_MAX_SOCKETS, VH_BATCH_SIZE
-- VH_RESOLVE_HOSTNAME, VH_TCP_ONLY, VH_SKIP_CVE, VH_SKIP_NVD_UPDATE
+## Saída
+Dict consumido por __main__.py com todos os parâmetros operacionais:
+- max_workers_hosts, max_workers_portas, timeout_socket
+- max_sockets, batch_size
+- resolve_hostname, tcp_only, skip_cve, skip_nvd_update
+- mode, adaptive
+
+## Variáveis de ambiente (opcionais, sempre com clamps)
+- `VH_MODE`: "leve" | "completo" | "auto" (padrão: "auto")
+- `VH_ASK_MODE`: "1" para perguntar o modo interativamente
+- `VH_MAX_HOSTS_WORKERS`: 4-12
+- `VH_MAX_PORTS_WORKERS`: 2-6
+- `VH_TIMEOUT_SOCKET`: 1.5-5.0 segundos
+- `VH_MAX_SOCKETS`: 64-160 (depende do SO)
+- `VH_BATCH_SIZE`: 6-16
+- `VH_RESOLVE_HOSTNAME`, `VH_TCP_ONLY`, `VH_SKIP_CVE`, `VH_SKIP_NVD_UPDATE`: 0/1
+
+## Autor
+Luiz
 """
 
 from __future__ import annotations
@@ -37,212 +39,275 @@ import sys
 import platform
 from typing import Dict
 
+
 # ============================
-# Helpers simples
+# Leitura de ENV com validação
 # ============================
 
-def _get_int(env: str, default: int, min_v: int, max_v: int) -> int:
+def _env_int(key: str, default: int, min_val: int, max_val: int) -> int:
+    """Lê inteiro de ENV com clamp entre min_val e max_val."""
     try:
-        v = int(os.getenv(env, str(default)))
+        value = int(os.getenv(key, str(default)))
     except (TypeError, ValueError):
-        v = default
-    return max(min_v, min(max_v, v))
+        value = default
+    return max(min_val, min(max_val, value))
 
-def _get_float(env: str, default: float, min_v: float, max_v: float) -> float:
+
+def _env_float(key: str, default: float, min_val: float, max_val: float) -> float:
+    """Lê float de ENV com clamp entre min_val e max_val."""
     try:
-        v = float(os.getenv(env, str(default)))
+        value = float(os.getenv(key, str(default)))
     except (TypeError, ValueError):
-        v = default
-    return max(min_v, min(max_v, v))
+        value = default
+    return max(min_val, min(max_val, value))
 
-def _get_bool(env: str, default: bool) -> bool:
-    val = os.getenv(env)
+
+def _env_bool(key: str, default: bool) -> bool:
+    """Lê booleano de ENV (aceita 1/true/yes/on)."""
+    val = os.getenv(key)
     if val is None:
         return default
     return str(val).strip().lower() in ("1", "true", "yes", "on")
 
-def _isatty() -> bool:
-    try:
-        return sys.stdin.isatty()
-    except Exception:
-        return False
 
 def _is_windows() -> bool:
+    """Detecta se o SO é Windows."""
     return platform.system().lower().startswith("win")
 
 
 # ============================
-# Presets CONSERVADORES
+# Limites rígidos (hard clamps)
 # ============================
 
-# Limites duros (não ultrapassar)
-HARD_MAX_HOSTS   = 12   # nunca mais que isso, mesmo “NASA”
-HARD_MAX_PORTS   = 6
-HARD_MAX_SOCKETS_WIN = 128
-HARD_MAX_SOCKETS_NIX = 160
-HARD_MAX_BATCH   = 16
+_LIMITS = {
+    "hosts":   (4, 12),     # min, max workers por host
+    "ports":   (2, 6),      # min, max workers por porta
+    "sockets_win": (64, 128),
+    "sockets_nix": (64, 160),
+    "batch":   (6, 16),
+    "timeout": (1.5, 5.0),
+}
 
-HARD_MIN_HOSTS   = 4
-HARD_MIN_PORTS   = 2
-HARD_MIN_SOCKETS = 64
-HARD_MIN_BATCH   = 6
 
-# Presets por modo (conservadores)
-PRESET_LEVE = {
+# ============================
+# Presets por modo
+# ============================
+
+PRESET_LIGHT = {
     "hosts": 6,
-    "portas": 3,
+    "ports": 3,
     "timeout": 2.0,
     "batch": 8,
     "resolve_hostname": False,
     "tcp_only": True,
     "skip_cve": True,
     "skip_nvd_update": False,
-    "adaptive": True,  # pode reduzir ainda mais se necessário
+    "adaptive": True,
 }
 
-PRESET_COMPLETO = {
+PRESET_COMPLETE = {
     "hosts": 8,
-    "portas": 4,
+    "ports": 4,
     "timeout": 3.0,
     "batch": 10,
     "resolve_hostname": True,
     "tcp_only": False,
     "skip_cve": False,
     "skip_nvd_update": False,
-    "adaptive": True,  # pode reduzir ainda mais se necessário
+    "adaptive": True,
 }
 
-# Auto escolhe o preset, mas SEM aumentar a agressividade
-def _preset_auto(is_win: bool) -> Dict:
-    # No Windows: tende ao leve por padrão (para evitar travas)
-    base = PRESET_LEVE.copy() if is_win else PRESET_COMPLETO.copy()
-    return base
+
+def _select_preset(mode: str, is_win: bool) -> Dict:
+    """
+    Seleciona o preset base conforme modo e SO.
+
+    No modo "auto", Windows usa preset leve, Linux usa completo.
+
+    Args:
+        mode: "leve", "completo" ou "auto".
+        is_win: True se Windows.
+
+    Returns:
+        Cópia do preset selecionado.
+    """
+    if mode == "leve":
+        return PRESET_LIGHT.copy()
+    if mode == "completo":
+        return PRESET_COMPLETE.copy()
+    # auto: Windows → leve (evita travar), Linux → completo
+    return PRESET_LIGHT.copy() if is_win else PRESET_COMPLETE.copy()
 
 
 # ============================
-# Perguntar modo (opcional)
+# Interação com usuário
 # ============================
 
-def _ask_mode(default_mode: str) -> str:
-    # passa a perguntar por padrão
-    ask = _get_bool("VH_ASK_MODE", True)
+def _ask_mode_interactive(default: str) -> str:
+    """
+    Pergunta ao usuário qual modo usar, se VH_ASK_MODE=1.
 
-    if not ask:
-        return default_mode
+    Args:
+        default: Modo padrão se o usuário não escolher.
+
+    Returns:
+        Modo escolhido.
+    """
+    if not _env_bool("VH_ASK_MODE", True):
+        return default
 
     try:
-        # pergunta SEM depender de TTY; se der erro de input, mantém default
-        print(f"[config] Modo atual: {default_mode}.")
-        ans = input("[config] Escolha o modo [auto|leve|completo] (Enter mantém): ").strip().lower()
-        return ans if ans in ("auto", "leve", "completo") else default_mode
+        print(f"[config] Modo atual: {default}.")
+        answer = input("[config] Escolha o modo [auto|leve|completo] (Enter mantém): ").strip().lower()
+        return answer if answer in ("auto", "leve", "completo") else default
     except Exception:
-        return default_mode
+        return default
 
 
 # ============================
-# Clamps e max_sockets por OS
+# Aplicação de clamps e overrides
 # ============================
 
-def _apply_clamps(p: Dict, is_win: bool) -> Dict:
-    hosts  = max(HARD_MIN_HOSTS, min(HARD_MAX_HOSTS, int(p["hosts"])))
-    portas = max(HARD_MIN_PORTS, min(HARD_MAX_PORTS, int(p["portas"])))
-    batch  = max(HARD_MIN_BATCH, min(HARD_MAX_BATCH, int(p["batch"])))
-    timeout = _get_float("VH_TIMEOUT_SOCKET", float(p["timeout"]), 1.5, 5.0)
+def _apply_clamps(preset: Dict, is_win: bool) -> Dict:
+    """
+    Aplica limites rígidos ao preset e calcula max_sockets.
 
-    # max_sockets conservador por OS
+    Garante que hosts * ports não exceda 85% de max_sockets
+    (evita exaustão de file descriptors).
+
+    Args:
+        preset: Dicionário de configuração.
+        is_win: True se Windows.
+
+    Returns:
+        Preset com valores clampados.
+    """
+    hmin, hmax = _LIMITS["hosts"]
+    pmin, pmax = _LIMITS["ports"]
+    bmin, bmax = _LIMITS["batch"]
+    tmin, tmax = _LIMITS["timeout"]
+
+    hosts = max(hmin, min(hmax, int(preset["hosts"])))
+    ports = max(pmin, min(pmax, int(preset["ports"])))
+    batch = max(bmin, min(bmax, int(preset["batch"])))
+    timeout = _env_float("VH_TIMEOUT_SOCKET", float(preset["timeout"]), tmin, tmax)
+
+    # max_sockets por SO
     if is_win:
-        max_sockets = _get_int("VH_MAX_SOCKETS", HARD_MAX_SOCKETS_WIN, HARD_MIN_SOCKETS, HARD_MAX_SOCKETS_WIN)
+        smin, smax = _LIMITS["sockets_win"]
     else:
-        max_sockets = _get_int("VH_MAX_SOCKETS", HARD_MAX_SOCKETS_NIX, HARD_MIN_SOCKETS, HARD_MAX_SOCKETS_NIX)
+        smin, smax = _LIMITS["sockets_nix"]
+    max_sockets = _env_int("VH_MAX_SOCKETS", smax, smin, smax)
 
-    # Não permitir hosts*portas acima de ~85% do max_sockets
-    alvo = int(max_sockets * 0.85)
-    while hosts * portas > alvo and portas > HARD_MIN_PORTS:
-        portas -= 1
-    while hosts * portas > alvo and hosts > HARD_MIN_HOSTS:
+    # Garante hosts * ports <= 85% max_sockets
+    safe_limit = int(max_sockets * 0.85)
+    while hosts * ports > safe_limit and ports > pmin:
+        ports -= 1
+    while hosts * ports > safe_limit and hosts > hmin:
         hosts -= 1
 
-    p.update({
+    preset.update({
         "hosts": hosts,
-        "portas": portas,
+        "ports": ports,
         "timeout": timeout,
         "batch": batch,
         "max_sockets": max_sockets,
     })
-    return p
+    return preset
+
+
+def _apply_env_overrides(preset: Dict, is_win: bool) -> Dict:
+    """
+    Aplica overrides de variáveis de ambiente ao preset.
+
+    Args:
+        preset: Dicionário de configuração.
+        is_win: True se Windows.
+
+    Returns:
+        Preset com overrides aplicados e re-clampados.
+    """
+    hmin, hmax = _LIMITS["hosts"]
+    pmin, pmax = _LIMITS["ports"]
+    bmin, bmax = _LIMITS["batch"]
+    tmin, tmax = _LIMITS["timeout"]
+
+    preset["hosts"] = _env_int("VH_MAX_HOSTS_WORKERS", preset["hosts"], hmin, hmax)
+    preset["ports"] = _env_int("VH_MAX_PORTS_WORKERS", preset["ports"], pmin, pmax)
+    preset["batch"] = _env_int("VH_BATCH_SIZE", preset["batch"], bmin, bmax)
+    preset["timeout"] = _env_float("VH_TIMEOUT_SOCKET", preset["timeout"], tmin, tmax)
+
+    preset["resolve_hostname"] = _env_bool("VH_RESOLVE_HOSTNAME", preset["resolve_hostname"])
+    preset["tcp_only"] = _env_bool("VH_TCP_ONLY", preset["tcp_only"])
+    preset["skip_cve"] = _env_bool("VH_SKIP_CVE", preset["skip_cve"])
+    preset["skip_nvd_update"] = _env_bool("VH_SKIP_NVD_UPDATE", preset["skip_nvd_update"])
+
+    return _apply_clamps(preset, is_win)
 
 
 # ============================
-# Overrides por ENV (respeitando clamps)
-# ============================
-
-def _overrides(p: Dict, is_win: bool) -> Dict:
-    p["hosts"]  = _get_int("VH_MAX_HOSTS_WORKERS", p["hosts"], HARD_MIN_HOSTS, HARD_MAX_HOSTS)
-    p["portas"] = _get_int("VH_MAX_PORTS_WORKERS", p["portas"], HARD_MIN_PORTS, HARD_MAX_PORTS)
-    p["batch"]  = _get_int("VH_BATCH_SIZE", p["batch"], HARD_MIN_BATCH, HARD_MAX_BATCH)
-    p["timeout"] = _get_float("VH_TIMEOUT_SOCKET", p["timeout"], 1.5, 5.0)
-
-    # Flags de features (podem ser forçadas, mas não mexem no paralelismo base)
-    p["resolve_hostname"] = _get_bool("VH_RESOLVE_HOSTNAME", p["resolve_hostname"])
-    p["tcp_only"]         = _get_bool("VH_TCP_ONLY", p["tcp_only"])
-    p["skip_cve"]         = _get_bool("VH_SKIP_CVE", p["skip_cve"])
-    p["skip_nvd_update"]  = _get_bool("VH_SKIP_NVD_UPDATE", p["skip_nvd_update"])
-
-    # Reaplicar clamps (garantia)
-    return _apply_clamps(p, is_win)
-
-
-# ============================
-# API
+# API pública
 # ============================
 
 def auto_configurar() -> Dict[str, object]:
+    """
+    Configura automaticamente o scanner baseado em modo, SO e variáveis de ambiente.
+
+    Fluxo:
+    1. Determina modo (ENV ou interativo)
+    2. Seleciona preset base
+    3. Aplica clamps por SO
+    4. Aplica overrides de ENV (com re-clamp)
+    5. Loga configuração efetiva
+
+    Returns:
+        Dicionário com todos os parâmetros operacionais:
+        - max_workers_hosts (int): Workers para scan de hosts em paralelo
+        - max_workers_portas (int): Workers para port scan por host
+        - timeout_socket (float): Timeout de conexão em segundos
+        - max_sockets (int): Limite global de sockets simultâneos
+        - batch_size (int): Tamanho do lote de IPs
+        - resolve_hostname (bool): Resolver DNS reverso
+        - tcp_only (bool): Usar apenas TCP (sem ICMP avançado)
+        - skip_cve (bool): Pular verificação de CVEs
+        - skip_nvd_update (bool): Pular atualização da base NVD
+        - mode (str): Modo efetivo usado
+        - adaptive (bool): Governança adaptativa habilitada
+    """
     is_win = _is_windows()
 
-    modo = (os.getenv("VH_MODE") or "auto").strip().lower()
-    if modo not in ("auto", "leve", "completo"):
-        modo = "auto"
-    modo = _ask_mode(modo)
+    mode = (os.getenv("VH_MODE") or "auto").strip().lower()
+    if mode not in ("auto", "leve", "completo"):
+        mode = "auto"
+    mode = _ask_mode_interactive(mode)
 
-    if modo == "leve":
-        preset = PRESET_LEVE.copy()
-    elif modo == "completo":
-        preset = PRESET_COMPLETO.copy()
-    else:  # auto
-        preset = _preset_auto(is_win)
-
-    # Clamps conservadores e max_sockets por OS
+    preset = _select_preset(mode, is_win)
     preset = _apply_clamps(preset, is_win)
-    # Overrides de ENV (com clamps)
-    preset = _overrides(preset, is_win)
+    preset = _apply_env_overrides(preset, is_win)
 
     # Log informativo
-    sockets_estimados = preset["hosts"] * preset["portas"]
+    estimated_sockets = preset["hosts"] * preset["ports"]
     print(
-        "[config] "
-        f"modo={modo} | hosts={preset['hosts']} | portas={preset['portas']} | "
+        f"[config] modo={mode} | hosts={preset['hosts']} | portas={preset['ports']} | "
         f"timeout={preset['timeout']}s | batch={preset['batch']} | "
         f"max_sockets={preset['max_sockets']} | "
         f"resolve_hostname={int(preset['resolve_hostname'])} | "
         f"tcp_only={int(preset['tcp_only'])} | "
         f"skip_cve={int(preset['skip_cve'])} | "
         f"skip_nvd_update={int(preset['skip_nvd_update'])} | "
-        f"est_sockets={sockets_estimados}"
+        f"est_sockets={estimated_sockets}"
     )
 
     return {
         "max_workers_hosts": int(preset["hosts"]),
-        "max_workers_portas": int(preset["portas"]),
+        "max_workers_portas": int(preset["ports"]),
         "timeout_socket": float(preset["timeout"]),
-
         "max_sockets": int(preset["max_sockets"]),
         "batch_size": int(preset["batch"]),
-
         "resolve_hostname": bool(preset["resolve_hostname"]),
         "tcp_only": bool(preset["tcp_only"]),
         "skip_cve": bool(preset["skip_cve"]),
         "skip_nvd_update": bool(preset["skip_nvd_update"]),
-
-        "mode": modo,
+        "mode": mode,
         "adaptive": bool(preset.get("adaptive", True)),
     }

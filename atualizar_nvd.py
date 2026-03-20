@@ -1,73 +1,65 @@
 """
-# atualizar_nvd.py
+# atualizar_nvd.py — Atualização da base NVD (National Vulnerability Database)
 
 ## Descrição
-Este script atualiza automaticamente a base de dados de vulnerabilidades da NVD (National Vulnerability Database),
-baixando os arquivos `nvdcve-1.1-<ano>.json.gz` diretamente do site oficial da NIST.
-
-Ele evita downloads desnecessários, realizando a verificação de atualização apenas se o último acesso tiver
-ocorrido há mais de `DIAS_ENTRE_ATUALIZACOES` dias.
+Baixa os arquivos JSON comprimidos de CVEs do feed NVD 1.1 da NIST.
+Realiza controle de intervalo mínimo entre atualizações para evitar
+downloads desnecessários.
 
 ## Funcionalidades
-- Verifica a data da última atualização da base
-- Baixa automaticamente os arquivos de anos faltantes
-- Garante que os arquivos mais recentes estejam salvos localmente
-- Cria o diretório `nvd_data` se não existir
+- Verifica data da última atualização via arquivo `.last_check`
+- Baixa apenas arquivos que não existem localmente
+- Retry com backoff exponencial em caso de falha de rede
+- Cria diretório `nvd_data/` automaticamente
 
 ## Requisitos
 - Conexão com a internet
-- Python 3.6 ou superior
-- requests
+- requests>=2.31.0
 
 ## Autor
 Luiz
 """
 
 import os
+import time
 import datetime
 import requests
 
-# ========== CONFIGURAÇÃO ========== #
-URL_BASE = "https://nvd.nist.gov/feeds/json/cve/1.1"
-DIRETORIO = "nvd_data"
-DIAS_ENTRE_ATUALIZACOES = 5
-ANO_INICIAL = 2002
-ARQUIVO_LAST_CHECK = ".last_check"
-# ================================== #
+# ============================
+# Configuração
+# ============================
+
+NVD_FEED_URL = "https://nvd.nist.gov/feeds/json/cve/1.1"
+NVD_DATA_DIR = "nvd_data"
+UPDATE_INTERVAL_DAYS = 5
+FIRST_YEAR = 2002
+LAST_CHECK_FILE = ".last_check"
+
+# Retry: 3 tentativas com backoff exponencial (2s, 4s, 8s)
+MAX_RETRIES = 3
+INITIAL_BACKOFF_SEC = 2
 
 
-def get_ano_atual():
+# ============================
+# Controle de atualização
+# ============================
+
+def _last_check_path() -> str:
+    """Retorna caminho completo do arquivo de controle de última verificação."""
+    return os.path.join(NVD_DATA_DIR, LAST_CHECK_FILE)
+
+
+def _days_since_last_check() -> float:
     """
-    Obtém o ano atual com base na data do sistema.
+    Calcula dias desde a última verificação.
 
-    Retorna:
-        int: Ano atual.
-    """
-    return datetime.datetime.now().year
-
-
-def caminho_last_check():
-    """
-    Retorna o caminho absoluto do arquivo de controle `.last_check`.
-
-    Retorna:
-        str: Caminho completo.
-    """
-    return os.path.join(DIRETORIO, ARQUIVO_LAST_CHECK)
-
-
-def dias_desde_ultima_verificacao():
-    """
-    Calcula o número de dias desde a última verificação.
-
-    Retorna:
-        float: Número de dias passados. Retorna infinito se não houver registro ou erro de leitura.
+    Returns:
+        Número de dias, ou infinito se não houver registro.
     """
     try:
-        with open(caminho_last_check(), "r") as f:
-            ultima = datetime.datetime.strptime(f.read().strip(), "%Y-%m-%d")
-            hoje = datetime.datetime.now()
-            return (hoje - ultima).days
+        with open(_last_check_path(), "r") as f:
+            last_date = datetime.datetime.strptime(f.read().strip(), "%Y-%m-%d")
+            return (datetime.datetime.now() - last_date).days
     except FileNotFoundError:
         return float("inf")
     except Exception as e:
@@ -75,70 +67,82 @@ def dias_desde_ultima_verificacao():
         return float("inf")
 
 
-def registrar_verificacao():
-    """
-    Atualiza o arquivo `.last_check` com a data atual.
-    """
+def _record_check() -> None:
+    """Atualiza arquivo `.last_check` com a data atual."""
     try:
-        with open(caminho_last_check(), "w") as f:
+        with open(_last_check_path(), "w") as f:
             f.write(datetime.datetime.now().strftime("%Y-%m-%d"))
     except Exception as e:
-        print(f"[ERRO] Falha ao registrar última verificação: {e}")
+        print(f"[ERRO] Falha ao registrar verificação: {e}")
 
 
-def baixar_arquivo(ano: int):
+# ============================
+# Download com retry
+# ============================
+
+def _download_file(year: int) -> None:
     """
-    Realiza o download do arquivo CVE para o ano especificado.
+    Baixa arquivo CVE de um ano específico com retry e backoff exponencial.
 
-    Parâmetros:
-        ano (int): Ano desejado da base CVE.
+    Pula se o arquivo já existe localmente.
 
-    Ação:
-        - Se o arquivo já existir localmente, ele será ignorado.
-        - Caso contrário, será baixado da NVD.
+    Args:
+        year: Ano do feed CVE (ex: 2023).
     """
-    nome_arquivo = f"nvdcve-1.1-{ano}.json.gz"
-    url = f"{URL_BASE}/{nome_arquivo}"
-    caminho = os.path.join(DIRETORIO, nome_arquivo)
+    filename = f"nvdcve-1.1-{year}.json.gz"
+    url = f"{NVD_FEED_URL}/{filename}"
+    filepath = os.path.join(NVD_DATA_DIR, filename)
 
-    if os.path.exists(caminho):
-        print(f"[✓] {nome_arquivo} já existe. Pulando.")
+    if os.path.exists(filepath):
+        print(f"[ok] {filename} já existe. Pulando.")
         return
 
-    print(f"[↓] Baixando {nome_arquivo}...")
-    try:
-        r = requests.get(url, stream=True, timeout=30)
-        r.raise_for_status()
-        with open(caminho, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-        print(f"[✔] {nome_arquivo} salvo com sucesso.")
-    except Exception as e:
-        print(f"[ERRO] Falha ao baixar {nome_arquivo}: {e}")
+    for attempt in range(1, MAX_RETRIES + 1):
+        print(f"[>>] Baixando {filename} (tentativa {attempt}/{MAX_RETRIES})...")
+        try:
+            response = requests.get(url, stream=True, timeout=30)
+            response.raise_for_status()
+            with open(filepath, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            print(f"[ok] {filename} salvo com sucesso.")
+            return
+        except Exception as e:
+            print(f"[!!] Falha ao baixar {filename}: {e}")
+            if attempt < MAX_RETRIES:
+                wait = INITIAL_BACKOFF_SEC * (2 ** (attempt - 1))
+                print(f"[..] Aguardando {wait}s antes de tentar novamente...")
+                time.sleep(wait)
+
+    print(f"[ERRO] Não foi possível baixar {filename} após {MAX_RETRIES} tentativas.")
 
 
-def atualizar_base_nvd():
+# ============================
+# API pública
+# ============================
+
+def atualizar_base_nvd() -> None:
     """
-    Função principal que coordena a atualização da base NVD.
+    Coordena a atualização da base NVD.
 
-    - Verifica se o intervalo mínimo entre atualizações foi respeitado.
-    - Caso necessário, realiza o download de todos os arquivos desde 2002 até o ano atual.
-    - Registra a nova data de atualização ao final.
+    Verifica o intervalo mínimo entre atualizações. Se necessário, baixa
+    todos os feeds de FIRST_YEAR até o ano atual. Registra a data ao final.
     """
-    os.makedirs(DIRETORIO, exist_ok=True)
+    os.makedirs(NVD_DATA_DIR, exist_ok=True)
 
-    dias_passados = dias_desde_ultima_verificacao()
-    if dias_passados < DIAS_ENTRE_ATUALIZACOES:
-        print(f"[i] Última verificação foi há {dias_passados} dias.")
-        print(f"[→] Nenhuma atualização necessária. Aguarde mais {DIAS_ENTRE_ATUALIZACOES - dias_passados} dias.")
+    days_elapsed = _days_since_last_check()
+    if days_elapsed < UPDATE_INTERVAL_DAYS:
+        remaining = UPDATE_INTERVAL_DAYS - days_elapsed
+        print(f"[i] Última verificação há {days_elapsed:.0f} dias. "
+              f"Próxima em {remaining:.0f} dias.")
         return
 
-    ano_atual = get_ano_atual()
-    for ano in range(ANO_INICIAL, ano_atual + 1):
-        baixar_arquivo(ano)
+    current_year = datetime.datetime.now().year
+    for year in range(FIRST_YEAR, current_year + 1):
+        _download_file(year)
 
-    registrar_verificacao()
-    print("\n[✓] Atualização da base NVD finalizada.")
+    _record_check()
+    print("\n[ok] Atualização da base NVD finalizada.")
 
 
 if __name__ == "__main__":
