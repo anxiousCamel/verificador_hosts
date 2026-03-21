@@ -84,6 +84,10 @@ def calcular_risco(host: dict) -> Tuple[int, str]:
         except ValueError:
             pass
 
+    # Security findings from security_checks.py
+    for finding in host.get("security_findings", []):
+        score += finding.get("score", 0)
+
     if score >= 50:
         return (score, "CRÍTICO")
     if score >= 25:
@@ -162,8 +166,9 @@ def gerar_tabela(status_dict: dict) -> Table:
     table.add_column("Latência", width=9, no_wrap=True)
     table.add_column("Fabricante", width=18, overflow="fold")
     table.add_column("Portas", width=20, overflow="fold")
-    table.add_column("Banners", width=28, overflow="fold")
-    table.add_column("CVEs", overflow="fold")
+    table.add_column("Banners", width=24, overflow="fold")
+    table.add_column("CVEs", width=22, overflow="fold")
+    table.add_column("Achados", overflow="fold")
 
     for ip, host, score, nivel in classified:
         risk_fmt = _format_risk(score, nivel)
@@ -190,10 +195,12 @@ def gerar_tabela(status_dict: dict) -> Table:
         ports_fmt = _format_ports(host["portas"])
         banners_fmt = _format_banners(host["banners"])
         vulns_fmt = _format_vulns(host.get("vulnerabilidades", []))
+        findings_fmt = _format_security_findings(host.get("security_findings", []))
 
         table.add_row(
             risk_fmt, ip_fmt, status_fmt, host["so"], mac_fmt,
             latency_fmt, fab_fmt, ports_fmt, banners_fmt, vulns_fmt,
+            findings_fmt,
         )
 
     return table
@@ -236,6 +243,26 @@ def gerar_resumo_risco(status_dict: dict) -> str:
         f"  [dim]Total CVEs: {total_vulns} "
         f"({confirmed} confirmados, {suspected} suspeitos)[/dim]"
     )
+
+    # Security findings summary
+    total_sec = sum(
+        len(h.get("security_findings", []))
+        for h in status_dict.values()
+    )
+    if total_sec:
+        sec_by_sev = {}
+        for h in status_dict.values():
+            for f in h.get("security_findings", []):
+                sev = f.get("severity", "info")
+                sec_by_sev[sev] = sec_by_sev.get(sev, 0) + 1
+        sec_parts = []
+        for sev in ("critico", "alto", "medio", "baixo", "info"):
+            if sec_by_sev.get(sev):
+                sec_parts.append(f"{sec_by_sev[sev]} {sev}")
+        lines.append(
+            f"  [dim]Achados de segurança: {total_sec} "
+            f"({', '.join(sec_parts)})[/dim]"
+        )
 
     return "\n".join(lines)
 
@@ -307,6 +334,36 @@ def _format_banners(banners: list) -> str:
     return "\n".join(compact)
 
 
+def _format_security_findings(findings: list) -> str:
+    """Formata achados de segurança com cores por severidade."""
+    if not findings:
+        return "[grey58]-[/grey58]"
+
+    severity_colors = {
+        "critico": "bold red",
+        "alto": "red",
+        "medio": "yellow",
+        "baixo": "blue",
+        "info": "grey58",
+    }
+
+    # Sort by severity
+    order = {"critico": 0, "alto": 1, "medio": 2, "baixo": 3, "info": 4}
+    sorted_f = sorted(findings, key=lambda f: order.get(f.get("severity", "info"), 4))
+
+    lines = []
+    for f in sorted_f[:6]:  # Max 6 findings shown
+        sev = f.get("severity", "info")
+        color = severity_colors.get(sev, "white")
+        title = f.get("title", "")[:50]
+        lines.append(f"[{color}]{title}[/{color}]")
+
+    if len(findings) > 6:
+        lines.append(f"[dim]+{len(findings) - 6} mais[/dim]")
+
+    return "\n".join(lines)
+
+
 def _format_vulns(vulns: list) -> str:
     """Formata CVEs: mostra contagem + top items, separando confirmados de suspeitos."""
     if not vulns:
@@ -366,7 +423,8 @@ def exportar_csv(status_dict: dict, caminho: str = "auditoria_hosts.csv") -> Non
             writer.writerow([
                 "IP", "Status", "Risco", "Score", "Hostname", "MAC",
                 "Fabricante", "SO", "Portas", "Banners",
-                "CVEs Confirmados", "CVEs Suspeitos", "Latência (ms)",
+                "CVEs Confirmados", "CVEs Suspeitos",
+                "Achados Segurança", "Latência (ms)",
             ])
 
             for ip, host, score, nivel in classified:
@@ -379,6 +437,10 @@ def exportar_csv(status_dict: dict, caminho: str = "auditoria_hosts.csv") -> Non
                     for v in host.get("vulnerabilidades", [])
                     if "(suspeita)" in str(v)
                 ]
+                sec_findings_csv = " | ".join(
+                    f"[{f.get('severity', '')}] {f.get('title', '')}"
+                    for f in host.get("security_findings", [])
+                )
                 writer.writerow([
                     ip,
                     host["status"],
@@ -392,6 +454,7 @@ def exportar_csv(status_dict: dict, caminho: str = "auditoria_hosts.csv") -> Non
                     ", ".join(host["banners"]),
                     ", ".join(confirmed),
                     ", ".join(suspected),
+                    sec_findings_csv,
                     host["latencia"],
                 ])
     except Exception as e:
