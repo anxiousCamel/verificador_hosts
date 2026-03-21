@@ -1,5 +1,5 @@
 """
-# atualizar_nvd.py — Atualização da base NVD (National Vulnerability Database)
+# src/services/nvd_updater.py — Atualização da base NVD (National Vulnerability Database)
 
 ## Descrição
 Baixa os arquivos JSON comprimidos de CVEs do feed NVD 1.1 da NIST.
@@ -16,8 +16,7 @@ downloads desnecessários.
 - Conexão com a internet
 - requests>=2.31.0
 
-## Autor
-Luiz
+Camada: services (sem dependências de projeto)
 """
 
 import os

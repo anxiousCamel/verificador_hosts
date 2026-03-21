@@ -1,5 +1,5 @@
 """
-# pentest/deep_enum.py — Fase 5: Enumeração profunda
+# src/services/deep_enum.py — Fase 5: Enumeração profunda
 
 ## Filosofia
 Só aprofundar onde faz sentido — quando há acesso confirmado
@@ -14,20 +14,19 @@ ou serviço relevante que justifique investigação adicional.
 - Brute force de diretórios (ruidoso e lento)
 - Exploração ativa de vulnerabilidades
 - Download de arquivos
+
+Camada: services
+Dependências: src.models.pentest_models
 """
 
 from __future__ import annotations
 
-import os
-import sys
 import subprocess
 import shutil
 import time
 from typing import List, Dict, Optional
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from pentest.models import HostTarget, Finding
+from src.models.pentest_models import HostTarget, Finding
 
 
 def _enumerate_smb_shares(ip: str, timeout: float = 10.0) -> List[Dict]:
@@ -36,13 +35,6 @@ def _enumerate_smb_shares(ip: str, timeout: float = 10.0) -> List[Dict]:
 
     Tenta acesso anônimo. Se funcionar, lista shares e verifica
     quais permitem leitura.
-
-    Args:
-        ip: Endereço IP.
-        timeout: Timeout.
-
-    Returns:
-        Lista de dicts com info de cada share.
     """
     smbclient = shutil.which("smbclient")
     if not smbclient:
@@ -56,7 +48,6 @@ def _enumerate_smb_shares(ip: str, timeout: float = 10.0) -> List[Dict]:
         )
         output = result.stdout
 
-        # Parse output para extrair shares
         in_shares = False
         for line in output.splitlines():
             if "Sharename" in line:
@@ -73,12 +64,8 @@ def _enumerate_smb_shares(ip: str, timeout: float = 10.0) -> List[Dict]:
                         share_info = {
                             "name": share_name,
                             "type": share_type,
-                            "readable": False,
+                            "readable": _check_share_readable(ip, share_name, timeout),
                         }
-                        # Tenta acessar a share
-                        share_info["readable"] = _check_share_readable(
-                            ip, share_name, timeout
-                        )
                         shares.append(share_info)
             elif in_shares and not line.strip():
                 in_shares = False
@@ -101,7 +88,6 @@ def _check_share_readable(ip: str, share_name: str, timeout: float = 5.0) -> boo
              "--timeout", str(int(timeout))],
             capture_output=True, text=True, timeout=timeout + 3,
         )
-        # Se listou arquivos, é legível
         return result.returncode == 0 and ("blocks" in result.stdout.lower() or "\n" in result.stdout)
     except Exception:
         return False
@@ -120,15 +106,6 @@ def _enumerate_http_info(
     - Headers de segurança (ou falta deles)
     - Tecnologias expostas (X-Powered-By, Server, etc.)
     - robots.txt (pode revelar paths sensíveis)
-
-    Args:
-        ip: Endereço IP.
-        port: Porta HTTP.
-        tls: True para HTTPS.
-        timeout: Timeout.
-
-    Returns:
-        Dict com informações coletadas.
     """
     import requests
     import urllib3
@@ -141,18 +118,17 @@ def _enumerate_http_info(
     try:
         resp = requests.get(base, timeout=timeout, verify=False, allow_redirects=True)
 
-        # Headers interessantes
-        interesting = ["Server", "X-Powered-By", "X-AspNet-Version",
-                       "X-Generator", "Via", "X-Frame-Options",
-                       "Content-Security-Policy", "Strict-Transport-Security",
-                       "X-Content-Type-Options", "X-XSS-Protection"]
-
+        interesting = [
+            "Server", "X-Powered-By", "X-AspNet-Version",
+            "X-Generator", "Via", "X-Frame-Options",
+            "Content-Security-Policy", "Strict-Transport-Security",
+            "X-Content-Type-Options", "X-XSS-Protection",
+        ]
         for header in interesting:
             val = resp.headers.get(header)
             if val:
                 info["headers"][header] = val
 
-        # Headers de segurança faltantes
         security_headers = [
             "X-Frame-Options", "Content-Security-Policy",
             "Strict-Transport-Security", "X-Content-Type-Options",
@@ -164,7 +140,6 @@ def _enumerate_http_info(
     except Exception:
         pass
 
-    # robots.txt
     try:
         resp = requests.get(f"{base}/robots.txt", timeout=timeout, verify=False)
         if resp.status_code == 200 and "disallow" in resp.text.lower():
@@ -184,8 +159,7 @@ def deep_enumerate(
 
     Gate de decisão:
     - Só processa hosts com prioridade >= 2
-    - Só aprofunda em serviços onde já temos evidência da fase 4
-    - SMB: só se acesso anônimo/guest foi confirmado
+    - SMB: só se acesso anônimo/guest foi confirmado na fase 4
     - HTTP: headers e info em hosts de alta prioridade
 
     Args:
@@ -236,48 +210,42 @@ def deep_enumerate(
         # --- HTTP Deep Enum ---
         http_ports = [p for p in target.open_ports if p.service in ("http", "https")]
         if http_ports and target.priority >= 2:
-            for port_info in http_ports[:2]:  # Máximo 2 portas HTTP por host
+            for port_info in http_ports[:2]:
                 target.add_decision("DEEP", f"HTTP em :{port_info.port} → coletando headers/info")
                 is_tls = port_info.tls or port_info.service == "https"
                 info = _enumerate_http_info(
                     target.ip, port_info.port, tls=is_tls, timeout=socket_timeout
                 )
 
-                # Headers de segurança faltantes
                 missing = info.get("missing_security_headers", [])
                 if missing:
                     findings.append(Finding(
                         host=target.ip, port=port_info.port,
-                        category="misconfig",
-                        severity="baixo",
+                        category="misconfig", severity="baixo",
                         title=f"Headers de segurança HTTP faltantes ({len(missing)})",
                         detail=f"Faltam: {', '.join(missing)}",
                         remediation="Configurar headers de segurança no servidor web.",
                     ))
 
-                # Tecnologias expostas
                 exposed_tech = {k: v for k, v in info.get("headers", {}).items()
                                 if k in ("Server", "X-Powered-By", "X-AspNet-Version", "X-Generator")}
                 if exposed_tech:
                     findings.append(Finding(
                         host=target.ip, port=port_info.port,
-                        category="info_leak",
-                        severity="baixo",
+                        category="info_leak", severity="baixo",
                         title="Tecnologias expostas via headers HTTP",
                         detail=f"Headers revelam: {exposed_tech}",
                         evidence=str(exposed_tech),
                         remediation="Remover headers que expõem tecnologia (Server, X-Powered-By).",
                     ))
 
-                # robots.txt com paths sensíveis
                 robots = info.get("robots_txt")
                 if robots:
                     findings.append(Finding(
                         host=target.ip, port=port_info.port,
-                        category="info_leak",
-                        severity="baixo",
+                        category="info_leak", severity="baixo",
                         title="robots.txt revela paths",
-                        detail=f"robots.txt encontrado com regras de Disallow.",
+                        detail="robots.txt encontrado com regras de Disallow.",
                         evidence=robots[:300],
                         remediation="Revisar robots.txt para não expor paths sensíveis.",
                     ))

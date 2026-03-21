@@ -1,5 +1,5 @@
 """
-# relatorio.py — Geração de relatórios da auditoria de rede
+# src/services/reporter.py — Geração de relatórios da auditoria de rede
 
 ## Descrição
 Gera relatórios visuais e exportações dos resultados da varredura:
@@ -8,12 +8,12 @@ Gera relatórios visuais e exportações dos resultados da varredura:
 
 ## Cores aplicadas
 - **Status**: verde (ONLINE) / vermelho (OFFLINE)
-- **Portas**: vermelho (críticas: SSH, Telnet, RDP, SMB, etc.) / azul (outras)
+- **Portas**: vermelho (críticas) / azul (outras)
 - **Latência**: verde (<10ms) / amarelo (<50ms) / laranja (<150ms) / vermelho (>150ms)
 - **MAC**: ciano (detectado) / cinza (N/D)
 
-## Autor
-Luiz
+Camada: services
+Dependências: src.services.scan_service (apenas CRITICAL_PORTS — constante)
 """
 
 from rich.console import Console
@@ -21,7 +21,7 @@ from rich.table import Table
 from rich import box
 import csv
 
-from scan import CRITICAL_PORTS
+from src.services.scan_service import CRITICAL_PORTS
 
 console = Console()
 
@@ -49,13 +49,11 @@ def gerar_tabela(status_dict: dict) -> Table:
     table.add_column("Banners")
     table.add_column("Vulnerabilidades")
 
-    # Ordena por octeto numérico (não alfabeticamente)
     sorted_ips = sorted(status_dict, key=lambda ip: tuple(map(int, ip.split("."))))
 
     for ip in sorted_ips:
         host = status_dict[ip]
 
-        # Formatação condicional por campo
         ip_fmt = (
             f"[yellow]{ip}[/yellow]" if host["status"] == "ONLINE"
             else f"[grey30]{ip}[/grey30]"
@@ -81,7 +79,6 @@ def gerar_tabela(status_dict: dict) -> Table:
         )
 
         latency_fmt = _format_latency(host["latencia"])
-
         ports_fmt = _format_ports(host["portas"])
 
         banners_fmt = ", ".join(host["banners"]) if host["banners"] else "-"
@@ -136,8 +133,7 @@ def exportar_csv(status_dict: dict, caminho: str = "auditoria_hosts.csv") -> Non
     """
     Exporta resultados da auditoria para arquivo CSV.
 
-    Usa separador ';' para compatibilidade com Excel em locales que
-    usam ',' como separador decimal.
+    Usa separador ';' para compatibilidade com Excel em locales PT-BR.
 
     Args:
         status_dict: Dicionário IP -> dados do host.

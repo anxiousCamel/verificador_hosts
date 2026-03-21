@@ -1,5 +1,5 @@
 """
-# cache.py — Cache inteligente de resultados de scan
+# src/infra/cache.py — Cache inteligente de resultados de scan
 
 ## Descrição
 Persiste resultados de varredura em arquivo JSON com TTL por entrada.
@@ -22,8 +22,7 @@ reutilizados do cache, economizando tempo de rede.
 }
 ```
 
-## Autor
-Luiz
+Camada: infra (sem dependências de projeto)
 """
 
 from __future__ import annotations
@@ -119,7 +118,6 @@ class ScanCache:
         except (KeyError, ValueError):
             return None
 
-        # Expirou?
         if datetime.now() - ts > self._ttl:
             return None
 
