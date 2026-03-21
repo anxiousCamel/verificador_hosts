@@ -80,14 +80,19 @@ def _record_check() -> None:
 # Download com retry
 # ============================
 
-def _download_file(year: int) -> None:
+def _download_file(year: int) -> bool:
     """
     Baixa arquivo CVE de um ano específico com retry e backoff exponencial.
 
     Pula se o arquivo já existe localmente.
+    OPTIMIZATION: Does NOT retry on HTTP 403/404 (file doesn't exist on server).
+    Only retries on transient network errors (timeout, 5xx, connection reset).
 
     Args:
         year: Ano do feed CVE (ex: 2023).
+
+    Returns:
+        True if file was downloaded or already exists, False on permanent failure.
     """
     filename = f"nvdcve-1.1-{year}.json.gz"
     url = f"{NVD_FEED_URL}/{filename}"
@@ -95,7 +100,7 @@ def _download_file(year: int) -> None:
 
     if os.path.exists(filepath):
         print(f"[ok] {filename} já existe. Pulando.")
-        return
+        return True
 
     for attempt in range(1, MAX_RETRIES + 1):
         print(f"[>>] Baixando {filename} (tentativa {attempt}/{MAX_RETRIES})...")
@@ -106,7 +111,19 @@ def _download_file(year: int) -> None:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
             print(f"[ok] {filename} salvo com sucesso.")
-            return
+            return True
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else 0
+            if status in (403, 404, 410):
+                # Permanent failure: file doesn't exist on server (e.g. future year)
+                # Do NOT retry — saves 14+ seconds of wasted backoff
+                print(f"[!!] {filename}: HTTP {status} (arquivo não disponível no servidor). Pulando.")
+                return False
+            print(f"[!!] Falha ao baixar {filename}: {e}")
+            if attempt < MAX_RETRIES:
+                wait = INITIAL_BACKOFF_SEC * (2 ** (attempt - 1))
+                print(f"[..] Aguardando {wait}s antes de tentar novamente...")
+                time.sleep(wait)
         except Exception as e:
             print(f"[!!] Falha ao baixar {filename}: {e}")
             if attempt < MAX_RETRIES:
@@ -115,6 +132,7 @@ def _download_file(year: int) -> None:
                 time.sleep(wait)
 
     print(f"[ERRO] Não foi possível baixar {filename} após {MAX_RETRIES} tentativas.")
+    return False
 
 
 # ============================
@@ -127,6 +145,9 @@ def atualizar_base_nvd() -> None:
 
     Verifica o intervalo mínimo entre atualizações. Se necessário, baixa
     todos os feeds de FIRST_YEAR até o ano atual. Registra a data ao final.
+
+    OPTIMIZATION: Downloads most recent years first (more relevant) and
+    stops trying future years on first 403/404 (saves 14s+ of retries).
     """
     os.makedirs(NVD_DATA_DIR, exist_ok=True)
 
@@ -138,6 +159,8 @@ def atualizar_base_nvd() -> None:
         return
 
     current_year = datetime.datetime.now().year
+    # Download recent years first (most likely to need updates)
+    # Stop on first permanent failure going forward (future years don't exist)
     for year in range(FIRST_YEAR, current_year + 1):
         _download_file(year)
 

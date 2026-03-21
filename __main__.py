@@ -41,6 +41,9 @@ from relatorio import gerar_tabela, exportar_csv
 from atualizar_nvd import atualizar_base_nvd
 from cache import ScanCache
 
+# Type alias for readability
+from typing import List
+
 # ==============================
 # Constantes
 # ==============================
@@ -364,66 +367,6 @@ def _run_cve_checks(hosts: Dict[str, dict]) -> None:
 
 
 # ==============================
-# Varredura em lotes
-# ==============================
-
-def _scan_batch(
-    batch_ips: List,
-    scan_fn,
-    oui_table: dict,
-    port_workers: int,
-    socket_timeout: float,
-    results: Dict[str, dict],
-    progress_batch,
-    progress_total,
-) -> Tuple[int, int]:
-    """
-    Varre um lote de IPs em paralelo e coleta resultados.
-
-    Args:
-        batch_ips: Lista de IPs do lote.
-        scan_fn: Função de scan por host (scan.scan_host).
-        oui_table: Tabela OUI de fabricantes.
-        port_workers: Workers para port scan por host.
-        socket_timeout: Timeout de socket.
-        results: Dicionário de resultados (modificado in-place).
-        progress_batch: Barra de progresso do lote.
-        progress_total: Barra de progresso total.
-
-    Returns:
-        Tupla (completed, timeouts) do lote.
-    """
-    timeouts = 0
-    completed = 0
-    host_workers = len(batch_ips)  # Máximo = tamanho do lote
-
-    with ThreadPoolExecutor(max_workers=host_workers) as executor:
-        futures = {
-            executor.submit(scan_fn, ip, oui_table, port_workers, socket_timeout): ip
-            for ip in batch_ips
-        }
-
-        for future in as_completed(futures):
-            ip = futures[future]
-            try:
-                result = future.result(timeout=(socket_timeout * 2) + 5)
-            except Exception as exc:
-                timeouts += 1
-                result = {
-                    "ip": ip, "status": "OFFLINE", "nome": "N/D",
-                    "mac": "N/D", "fabricante": "N/D", "so": "N/D",
-                    "portas": [], "banners": [], "vulnerabilidades": [],
-                    "latencia": -1.0, "erro": str(exc),
-                }
-            results[result["ip"]] = result
-            completed += 1
-            progress_batch.update(1)
-            progress_total.update(1)
-
-    return completed, timeouts
-
-
-# ==============================
 # Fluxo principal
 # ==============================
 
@@ -431,28 +374,51 @@ def main():
     """
     Ponto de entrada principal do verificador de hosts.
 
+    ARCHITECTURE: 2-Phase scanning for dramatic performance improvement:
+
+    Phase 1 — FAST ALIVE DISCOVERY:
+      Pings ALL IPs in parallel (40-50 workers) with tight timeout.
+      Eliminates offline hosts in ~2-3s total instead of blocking scan threads.
+      For 254 hosts with ~20 alive: saves ~230 * 2s = ~460s of wasted ping time.
+
+    Phase 2 — DEEP SCAN (alive hosts only):
+      Only scans hosts confirmed alive in Phase 1.
+      Uses batched parallel scanning with adaptive governance.
+
     Fluxo:
     1. Carrega configuração (auto_configurar)
     2. Atualiza base NVD se necessário
     3. Carrega tabela OUI
     4. Solicita range de IPs ao usuário
-    5. Varre hosts em lotes com governança adaptativa
-    6. Verifica CVEs nos banners coletados
-    7. Exibe relatório e oferece exportação CSV
+    5. Phase 1: Fast alive discovery
+    6. Phase 2: Deep scan alive hosts in batches
+    7. Verifica CVEs nos banners coletados
+    8. Relatório visual no terminal e exportação CSV
     """
+    t_start = time.time()
+    phase_times: Dict[str, float] = {}
+
     # 1) Configuração
     config = auto_configurar()
     batch_size = max(1, int(config["batch_size"]))
     skip_cve = bool(config["skip_cve"])
     skip_nvd_update = bool(config["skip_nvd_update"])
     adaptive = bool(config.get("adaptive", True))
+    fast_ports = bool(config.get("fast_ports", False))
+    ping_timeout_ms = int(config.get("ping_timeout_ms", 1000))
+    discovery_workers = int(config.get("discovery_workers", 40))
 
     # Propaga configuração para scan.py via ENV (lido no import)
     os.environ["VH_MAX_SOCKETS"] = str(int(config["max_sockets"]))
     os.environ["VH_RESOLVE_HOSTNAME"] = "1" if config["resolve_hostname"] else "0"
     os.environ["VH_TCP_ONLY"] = "1" if config["tcp_only"] else "0"
 
-    from scan import scan_host  # Import tardio após configurar ENV
+    from scan import (
+        scan_host_prescan, scan_host, discover_alive_hosts,
+        FAST_SCAN_PORTS, DEFAULT_SCAN_PORTS,
+    )
+
+    scan_ports_list = FAST_SCAN_PORTS if fast_ports else DEFAULT_SCAN_PORTS
 
     # Log de configuração efetiva
     console.print(
@@ -467,10 +433,15 @@ def main():
         f"tcp_only={int(config['tcp_only'])} | "
         f"skip_cve={int(skip_cve)} | "
         f"skip_nvd_update={int(skip_nvd_update)} | "
-        f"adaptive={int(adaptive)}"
+        f"adaptive={int(adaptive)} | "
+        f"fast_ports={int(fast_ports)} | "
+        f"ports={len(scan_ports_list)} | "
+        f"ping_timeout={ping_timeout_ms}ms | "
+        f"discovery_workers={discovery_workers}"
     )
 
     # 2) Atualização NVD
+    t0 = time.time()
     if not skip_nvd_update and _needs_nvd_update():
         console.print("\n[bold yellow]Atualizando base de vulnerabilidades da NVD...[/bold yellow]")
         try:
@@ -481,9 +452,12 @@ def main():
             console.print(f"[red]Falha ao atualizar base NVD: {e}[/red]")
     else:
         console.print("\n[bold cyan]Pulando atualização da NVD (recente ou desabilitada).[/bold cyan]\n")
+    phase_times["nvd_update"] = time.time() - t0
 
     # 3) Tabela OUI
+    t0 = time.time()
     oui_table = carregar_tabela_oui()
+    phase_times["oui_load"] = time.time() - t0
 
     # 4) Input do usuário
     print("\n==============================================")
@@ -505,26 +479,10 @@ def main():
         console.print("[red]Nenhum IP no intervalo informado.[/red]")
         return
 
-    # 5) Varredura com governança adaptativa + cache
+    # 5) Cache: separate cached IPs from IPs to scan
     results: Dict[str, dict] = {}
     scan_cache = ScanCache()
-    spinner = _start_spinner("Verificando hosts e portas")
 
-    host_workers = int(config["max_workers_hosts"])
-    port_workers = int(config["max_workers_portas"])
-    socket_timeout = float(config["timeout_socket"])
-
-    governor = AdaptiveGovernor(
-        batch_size=batch_size,
-        host_workers=host_workers,
-        port_workers=port_workers,
-        socket_timeout=socket_timeout,
-        slow_threshold_sec=max(40.0, socket_timeout * 8),
-        very_slow_threshold_sec=max(60.0, socket_timeout * 12),
-        fast_threshold_sec=max(12.0, socket_timeout * 3),
-    )
-
-    # Separar IPs em cacheados e a-varrer
     ips_to_scan = []
     cache_hits = 0
     for ip in ip_list:
@@ -541,97 +499,183 @@ def main():
             f"{len(ips_to_scan)} a varrer"
         )
 
-    total_to_scan = len(ips_to_scan)
-    total_ips = len(ip_list)
-    progress_total = tqdm(
-        total=total_ips, initial=cache_hits,
-        desc="Total", ncols=100, position=0, dynamic_ncols=True,
+    # ==========================================
+    # PHASE 1: FAST ALIVE DISCOVERY
+    # ==========================================
+    # This is the SINGLE BIGGEST optimization.
+    # Old behavior: each batch of 8 hosts would ping+scan ALL IPs (including offline).
+    #   254 hosts * 3s ping timeout = ~762s worst case (12+ minutes just for pings!)
+    # New behavior: parallel ping all 254 at once with 40 workers and 800ms timeout.
+    #   Takes ~5-8 seconds total, then we only deep-scan the ~20 alive hosts.
+    # ==========================================
+
+    t0 = time.time()
+    console.print(
+        f"\n[bold cyan]Phase 1: Descoberta rápida[/bold cyan] "
+        f"({len(ips_to_scan)} IPs, {discovery_workers} workers, {ping_timeout_ms}ms timeout)"
     )
 
-    try:
-        pos = 0
-        batch_idx = 0
+    alive_hosts = discover_alive_hosts(
+        ips_to_scan,
+        max_workers=discovery_workers,
+        timeout_ms=ping_timeout_ms,
+    )
 
-        while pos < total_to_scan:
-            batch_idx += 1
-            batch_end = min(total_to_scan, pos + batch_size)
-            batch_ips = ips_to_scan[pos:batch_end]
-            pos = batch_end
+    # Mark non-alive hosts as OFFLINE immediately
+    offline_count = 0
+    from scan import _build_offline_result
+    for ip in ips_to_scan:
+        if ip not in alive_hosts:
+            results[ip] = _build_offline_result(ip)
+            offline_count += 1
 
-            t0 = time.time()
+    alive_ips = [ip for ip in ips_to_scan if ip in alive_hosts]
+    phase_times["discovery"] = time.time() - t0
 
-            progress_batch = tqdm(
-                total=len(batch_ips),
-                desc=f"Lote {batch_idx} (hosts={host_workers},portas={port_workers},batch={batch_size})",
-                ncols=100, position=1, leave=False, dynamic_ncols=True,
-            )
+    console.print(
+        f"[bold green]Phase 1 completa:[/bold green] "
+        f"{len(alive_ips)} vivos, {offline_count} offline "
+        f"({phase_times['discovery']:.1f}s)"
+    )
 
-            # Executor por lote (permite ajustar workers entre lotes)
-            with ThreadPoolExecutor(max_workers=host_workers) as executor:
-                futures = {
-                    executor.submit(scan_host, ip, oui_table, port_workers, socket_timeout): ip
-                    for ip in batch_ips
-                }
-                timeouts = 0
-                completed = 0
+    # ==========================================
+    # PHASE 2: DEEP SCAN (alive hosts only)
+    # ==========================================
+    # Now we only scan hosts we KNOW are alive — no wasted connections.
+    # ==========================================
 
-                for future in as_completed(futures):
-                    ip = futures[future]
-                    try:
-                        result = future.result(timeout=(socket_timeout * 2) + 5)
-                    except Exception as exc:
-                        timeouts += 1
-                        result = {
-                            "ip": ip, "status": "OFFLINE", "nome": "N/D",
-                            "mac": "N/D", "fabricante": "N/D", "so": "N/D",
-                            "portas": [], "banners": [], "vulnerabilidades": [],
-                            "latencia": -1.0, "erro": str(exc),
-                        }
-                    results[result["ip"]] = result
-                    scan_cache.put(result["ip"], result)  # Atualiza cache
-                    completed += 1
-                    progress_batch.update(1)
-                    progress_total.update(1)
+    if not alive_ips:
+        console.print("[yellow]Nenhum host vivo encontrado. Nada a varrer.[/yellow]")
+    else:
+        t0 = time.time()
+        host_workers = int(config["max_workers_hosts"])
+        port_workers = int(config["max_workers_portas"])
+        socket_timeout = float(config["timeout_socket"])
 
-            progress_batch.close()
+        governor = AdaptiveGovernor(
+            batch_size=batch_size,
+            host_workers=host_workers,
+            port_workers=port_workers,
+            socket_timeout=socket_timeout,
+            slow_threshold_sec=max(30.0, socket_timeout * 8),
+            very_slow_threshold_sec=max(45.0, socket_timeout * 12),
+            fast_threshold_sec=max(8.0, socket_timeout * 3),
+        )
 
-            # Salva cache após cada lote (resiliência a crashes)
-            scan_cache.save()
+        spinner = _start_spinner("Varrendo hosts vivos")
 
-            duration = time.time() - t0
+        total_alive = len(alive_ips)
+        progress_total = tqdm(
+            total=len(ip_list), initial=cache_hits + offline_count,
+            desc="Total", ncols=100, position=0, dynamic_ncols=True,
+        )
 
-            # Governança: ajustar parâmetros se necessário
-            if adaptive:
-                adjusted, msg = governor.suggest(
-                    batch_duration=duration,
-                    timeouts=timeouts,
-                    completed=completed,
-                )
-                if adjusted:
-                    batch_size = governor.batch
-                    host_workers = governor.hosts
-                    port_workers = governor.ports
-                    socket_timeout = governor.timeout
-                    console.print(f"[yellow]Adaptando: {msg}[/yellow]")
-
-    finally:
-        spinner.set()
-        scan_cache.save()  # Salva cache final (mesmo em caso de Ctrl+C)
         try:
-            progress_total.close()
-        except Exception:
-            pass
+            pos = 0
+            batch_idx = 0
+
+            while pos < total_alive:
+                batch_idx += 1
+                batch_end = min(total_alive, pos + batch_size)
+                batch_ips = alive_ips[pos:batch_end]
+                pos = batch_end
+
+                t_batch = time.time()
+
+                progress_batch = tqdm(
+                    total=len(batch_ips),
+                    desc=f"Lote {batch_idx} (h={host_workers},p={port_workers},b={batch_size})",
+                    ncols=100, position=1, leave=False, dynamic_ncols=True,
+                )
+
+                with ThreadPoolExecutor(max_workers=host_workers) as executor:
+                    futures = {}
+                    for ip in batch_ips:
+                        ttl, lat = alive_hosts[ip]
+                        futures[executor.submit(
+                            scan_host_prescan, ip, ttl, lat,
+                            oui_table, port_workers, socket_timeout,
+                            ports=scan_ports_list,
+                        )] = ip
+
+                    timeouts = 0
+                    completed = 0
+
+                    for future in as_completed(futures):
+                        ip = futures[future]
+                        try:
+                            result = future.result(timeout=(socket_timeout * 2) + 5)
+                        except Exception as exc:
+                            timeouts += 1
+                            result = {
+                                "ip": ip, "status": "OFFLINE", "nome": "N/D",
+                                "mac": "N/D", "fabricante": "N/D", "so": "N/D",
+                                "portas": [], "banners": [], "vulnerabilidades": [],
+                                "latencia": -1.0, "erro": str(exc),
+                            }
+                        results[result["ip"]] = result
+                        scan_cache.put(result["ip"], result)
+                        completed += 1
+                        progress_batch.update(1)
+                        progress_total.update(1)
+
+                progress_batch.close()
+                scan_cache.save()
+
+                duration = time.time() - t_batch
+
+                if adaptive:
+                    adjusted, msg = governor.suggest(
+                        batch_duration=duration,
+                        timeouts=timeouts,
+                        completed=completed,
+                    )
+                    if adjusted:
+                        batch_size = governor.batch
+                        host_workers = governor.hosts
+                        port_workers = governor.ports
+                        socket_timeout = governor.timeout
+                        console.print(f"[yellow]Adaptando: {msg}[/yellow]")
+
+        finally:
+            spinner.set()
+            scan_cache.save()
+            try:
+                progress_total.close()
+            except Exception:
+                pass
+
+        phase_times["deep_scan"] = time.time() - t0
 
     # 6) Verificação de CVEs (centralizada, única passada)
+    t0 = time.time()
     if not skip_cve:
         _run_cve_checks(results)
     else:
         console.print("[yellow]skip_cve=1: verificação de CVEs desativada.[/yellow]")
+    phase_times["cve_check"] = time.time() - t0
 
     # 7) Relatório
     table = gerar_tabela(results)
     console.print("\n[bold cyan]Resumo Final:[/bold cyan]")
     console.print(table)
+
+    # Performance profiling summary
+    total_time = time.time() - t_start
+    phase_times["total"] = total_time
+
+    console.print("\n[bold magenta]Performance Profile:[/bold magenta]")
+    for phase, duration in phase_times.items():
+        pct = (duration / total_time * 100) if total_time > 0 else 0
+        bar = "█" * int(pct / 3)
+        console.print(f"  {phase:20s}: {duration:6.1f}s  ({pct:4.1f}%) {bar}")
+
+    online_count = sum(1 for r in results.values() if r.get("status") == "ONLINE")
+    console.print(
+        f"\n[dim]Total: {len(results)} hosts ({online_count} online) "
+        f"em {total_time:.1f}s "
+        f"({total_time / max(1, len(results)):.2f}s/host)[/dim]"
+    )
 
     # 8) Exportação CSV
     try:
@@ -647,11 +691,6 @@ def main():
             path = "auditoria_hosts.csv"
         exportar_csv(results, path)
         console.print(f"[green]Exportado para {path}[/green]")
-
-    try:
-        input("\nPressione Enter para sair...")
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":
