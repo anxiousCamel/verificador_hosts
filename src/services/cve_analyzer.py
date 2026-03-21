@@ -70,7 +70,8 @@ CPE_PART_ALLOWED = os.environ.get("CPE_PART_ALLOWED", "a")
 _PRODUCT_ALIASES: Dict[str, Tuple[str, str]] = {
     "openssh":       ("openbsd", "openssh"),
     "apache":        ("apache", "http_server"),
-    "httpd":         ("apache", "http_server"),
+    # "httpd" removed: was causing false positives (TP-LINK HTTPD → Apache)
+    # Apache is matched by the "apache" alias above (Apache/2.4.x banners)
     "nginx":         ("nginx", "nginx"),
     "lighttpd":      ("lighttpd", "lighttpd"),
     "microsoft-iis": ("microsoft", "internet_information_services"),
@@ -108,6 +109,14 @@ def normalize_product(name: str) -> Tuple[str, str]:
     return (normalized, normalized)
 
 
+_EMBEDDED_HTTP_PATTERNS = re.compile(
+    r"(?:TP-LINK|TPLINK|KM-MFP|MiniHTTPD|GoAhead|micro_httpd|"
+    r"thttpd|Boa/|Allegro-Software|RomPager|uhttpd|"
+    r"Embedthis|HTTPD/\d|ZyXEL|D-Link|Netgear|Linksys)",
+    re.IGNORECASE,
+)
+
+
 def extract_product_version(banner: str) -> Optional[Tuple[str, str]]:
     """
     Extrai (produto, versão) de um banner de serviço usando fingerprinting avançado.
@@ -125,6 +134,10 @@ def extract_product_version(banner: str) -> Optional[Tuple[str, str]]:
         return None
 
     text = banner.strip()
+
+    # Skip embedded/appliance HTTP servers (they are NOT Apache/Nginx/etc)
+    if _EMBEDDED_HTTP_PATTERNS.search(text):
+        return None
 
     m = re.search(r'OpenSSH[_\s](\d+\.\d+[a-z0-9]*)', text, re.IGNORECASE)
     if m:
@@ -287,12 +300,20 @@ def versions_equal(v1: str, v2: str) -> bool:
 # Cache do índice em disco
 # ==============================
 
+# Version tag — increment this when CPE matching logic changes to force index rebuild
+_INDEX_VERSION = 2  # v2: removed httpd alias, stricter anyVersion matching
+
 def _load_index_cache() -> Optional[Dict[Tuple[str, str], List[dict]]]:
     """Carrega índice CPE do cache pickle, se existir e for válido."""
     try:
         if os.path.exists(NVD_INDEX_PKL):
             with open(NVD_INDEX_PKL, "rb") as f:
-                return pickle.load(f)
+                data = pickle.load(f)
+            # Invalidate cache if version mismatch
+            if isinstance(data, dict) and data.get("_index_version") == _INDEX_VERSION:
+                del data["_index_version"]
+                return data
+            return None
     except Exception:
         return None
     return None
@@ -302,8 +323,10 @@ def _save_index_cache(index: Dict[Tuple[str, str], List[dict]]) -> None:
     """Salva índice CPE em cache pickle para reutilização."""
     try:
         os.makedirs(os.path.dirname(NVD_INDEX_PKL) or ".", exist_ok=True)
+        versioned = dict(index)
+        versioned["_index_version"] = _INDEX_VERSION
         with open(NVD_INDEX_PKL, "wb") as f:
-            pickle.dump(index, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(versioned, f, protocol=pickle.HIGHEST_PROTOCOL)
     except Exception:
         pass
 
@@ -483,8 +506,15 @@ def check_vulnerabilities_by_cpe(
         cve_id = entry["cve"]
 
         if entry.get("anyVersion"):
-            if version:
-                confirmed.append(cve_id)
+            # anyVersion without range = less reliable (affects "all versions"
+            # according to NVD, but may be outdated or overly broad).
+            # Only confirm if we also have version rules to narrow down.
+            rules = entry.get("versionRules") or {}
+            if version and any(rules.values()):
+                if version_in_range(version, rules):
+                    confirmed.append(cve_id)
+            elif version:
+                suspected.append(cve_id)
             else:
                 suspected.append(cve_id)
             continue
