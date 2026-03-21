@@ -447,6 +447,54 @@ def get_mac_from_arp(ip: str) -> str:
     return "N/D"
 
 
+# Pre-compiled regex for OS fingerprinting from banners
+_RE_SSH_DISTRO = re.compile(
+    r"SSH-\d\.\d-OpenSSH[_\s][\d.]+[a-z]*\d*\s+"
+    r"(Ubuntu|Debian|(?:Red\s*Hat|RHEL)|CentOS|Fedora|Alpine|"
+    r"FreeBSD|OpenBSD|SUSE|Arch|Gentoo|Slackware|Raspbian|Kali)"
+    r"(?:[_\-\s](\S+))?",
+    re.IGNORECASE,
+)
+_RE_SSH_DROPBEAR = re.compile(r"SSH-\d\.\d-dropbear", re.IGNORECASE)
+_RE_APACHE_OS = re.compile(
+    r"Apache/[\d.]+\s*\(([^)]+)\)", re.IGNORECASE
+)
+_RE_WINDOWS_VERSION = re.compile(
+    r"(Windows\s+(?:Server\s+)?(?:NT|XP|Vista|7|8|8\.1|10|11|"
+    r"2003|2008|2012|2016|2019|2022|2025)\s*(?:R2)?)",
+    re.IGNORECASE,
+)
+_RE_IIS_VERSION = re.compile(r"Microsoft-IIS/(\d+\.\d+)", re.IGNORECASE)
+
+# IIS version → Windows mapping
+_IIS_TO_WINDOWS = {
+    "6.0": "Windows Server 2003",
+    "7.0": "Windows Server 2008",
+    "7.5": "Windows Server 2008 R2",
+    "8.0": "Windows Server 2012",
+    "8.5": "Windows Server 2012 R2",
+    "10.0": "Windows Server 2016+",
+}
+
+# Known embedded device manufacturers (from OUI)
+_EMBEDDED_MANUFACTURERS = {
+    "tp-link", "tplink", "espressif", "redpine", "zyxel",
+    "netgear", "linksys", "d-link", "dlink", "ubiquiti",
+    "mikrotik", "aruba", "ruckus", "cambium", "mimosa",
+}
+
+# SSH Ubuntu package version → Ubuntu release mapping
+_UBUNTU_SSH_VERSIONS = {
+    "2ubuntu2":  "Ubuntu 14.04 LTS",
+    "1ubuntu1":  "Ubuntu 16.04 LTS",
+    "0ubuntu0":  "Ubuntu 18.04 LTS",
+    "4ubuntu0":  "Ubuntu 20.04 LTS",
+    "3ubuntu0":  "Ubuntu 22.04 LTS",
+    "3ubuntu13": "Ubuntu 24.04 LTS",
+    "7":         "Ubuntu 24.10+",
+}
+
+
 def detect_os_by_ttl(ttl: int) -> str:
     """Heurística básica de SO baseada apenas no TTL."""
     if ttl < 0:
@@ -460,13 +508,26 @@ def detect_os_by_ttl(ttl: int) -> str:
     return "Desconhecido"
 
 
-def detect_os_enhanced(ttl: int, open_ports: List[Tuple[int, str]]) -> str:
+def detect_os_enhanced(
+    ttl: int,
+    open_ports: List[Tuple[int, str]],
+    manufacturer: str = "",
+) -> str:
     """
-    Detecção de SO combinando TTL + portas abertas + banners.
+    Detecção de SO combinando TTL + portas + banners + fabricante.
 
-    Usa sistema de votação: cada evidência adiciona votos para um SO.
-    O SO com mais votos vence. Em empate, o TTL tem prioridade.
+    Retorna o SO mais específico possível:
+    - "Ubuntu 22.04 LTS" ao invés de "Linux/Unix"
+    - "Windows Server 2019" ao invés de "Windows"
+    - "Embedded Linux (TP-Link)" ao invés de "Linux/Unix"
+    - "Cisco IOS" ao invés de "Cisco/Appliance"
     """
+    # Phase 1: Try to extract SPECIFIC OS from banners
+    specific_os = _extract_specific_os(open_ports, manufacturer)
+    if specific_os:
+        return specific_os
+
+    # Phase 2: Fall back to voting system for generic classification
     votes = {"Linux/Unix": 0, "Windows": 0, "Cisco/Appliance": 0}
 
     if 0 < ttl <= 70:
@@ -506,11 +567,102 @@ def detect_os_enhanced(ttl: int, open_ports: List[Tuple[int, str]]) -> str:
         )):
             votes["Cisco/Appliance"] += 3
 
+    # Embedded device detection: if manufacturer is known embedded AND
+    # no strong evidence of a real desktop/server OS, classify as embedded
+    if _is_embedded_manufacturer(manufacturer):
+        mfr_short = manufacturer.split()[0] if manufacturer else "Device"
+        # Only override if there's no strong Windows/Cisco evidence from ports/banners
+        strong_windows = votes["Windows"] >= 4  # SMB ports or Microsoft banners
+        strong_cisco = votes["Cisco/Appliance"] >= 3
+        if not strong_windows and not strong_cisco:
+            return f"Embedded ({mfr_short})"
+
     if all(v == 0 for v in votes.values()):
         return "N/D"
 
     winner = max(votes, key=votes.get)
     return winner
+
+
+def _extract_specific_os(
+    open_ports: List[Tuple[int, str]],
+    manufacturer: str = "",
+) -> Optional[str]:
+    """
+    Tenta extrair SO específico dos banners (distro + versão).
+
+    Fontes de informação:
+    - SSH: "OpenSSH_8.9p1 Ubuntu-3ubuntu0.14" → Ubuntu 22.04 LTS
+    - SSH: "dropbear" → Embedded Linux
+    - HTTP: "Apache/2.4.58 (Ubuntu)" → Ubuntu
+    - IIS: "Microsoft-IIS/10.0" → Windows Server 2016+
+    - Windows banner: "Windows Server 2019"
+    """
+    for _, banner in open_ports:
+        if not banner or banner == "-":
+            continue
+
+        # SSH distro detection (most reliable for Linux)
+        m = _RE_SSH_DISTRO.search(banner)
+        if m:
+            distro = m.group(1).strip()
+            pkg_suffix = m.group(2) or ""
+
+            # Try to map Ubuntu SSH package version to release
+            if distro.lower() == "ubuntu":
+                for key, release in _UBUNTU_SSH_VERSIONS.items():
+                    if key in pkg_suffix:
+                        return release
+                return f"Ubuntu ({pkg_suffix})" if pkg_suffix else "Ubuntu"
+
+            if distro.lower() == "debian" or distro.lower() == "raspbian":
+                return f"Debian ({pkg_suffix})" if pkg_suffix else "Debian"
+
+            return distro
+
+        # Dropbear = embedded Linux
+        if _RE_SSH_DROPBEAR.search(banner):
+            if _is_embedded_manufacturer(manufacturer):
+                mfr_short = manufacturer.split()[0]
+                return f"Embedded Linux ({mfr_short})"
+            return "Embedded Linux"
+
+        # IIS version → Windows version
+        m = _RE_IIS_VERSION.search(banner)
+        if m:
+            iis_ver = m.group(1)
+            win_ver = _IIS_TO_WINDOWS.get(iis_ver)
+            return win_ver or f"Windows (IIS {iis_ver})"
+
+        # Explicit Windows version in banner
+        m = _RE_WINDOWS_VERSION.search(banner)
+        if m:
+            return m.group(1)
+
+        # Apache (OS) header
+        m = _RE_APACHE_OS.search(banner)
+        if m:
+            os_hint = m.group(1).strip()
+            if "ubuntu" in os_hint.lower():
+                return f"Ubuntu ({os_hint})"
+            if "debian" in os_hint.lower():
+                return f"Debian ({os_hint})"
+            if "centos" in os_hint.lower():
+                return f"CentOS ({os_hint})"
+            if "red hat" in os_hint.lower() or "rhel" in os_hint.lower():
+                return f"Red Hat ({os_hint})"
+            if "win" in os_hint.lower():
+                return f"Windows ({os_hint})"
+
+    return None
+
+
+def _is_embedded_manufacturer(manufacturer: str) -> bool:
+    """Verifica se o fabricante é de dispositivos embarcados."""
+    if not manufacturer or manufacturer in ("N/D", "-"):
+        return False
+    mfr_lower = manufacturer.lower().replace("-", "").replace(" ", "")
+    return any(emb in mfr_lower for emb in _EMBEDDED_MANUFACTURERS)
 
 
 def lookup_manufacturer(mac: str, oui_table: Dict[str, str]) -> str:
@@ -644,7 +796,7 @@ def _scan_alive_host(
         workers=port_workers,
     )
 
-    os_guess = detect_os_enhanced(ttl, open_ports)
+    os_guess = detect_os_enhanced(ttl, open_ports, manufacturer)
 
     port_numbers = [str(port) for port, _ in open_ports]
     banners = [f"{port}:{banner}" for port, banner in open_ports]

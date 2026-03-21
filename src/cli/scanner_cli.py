@@ -131,6 +131,46 @@ def main():
         console.print("[yellow]skip_cve=1: verificação de CVEs desativada.[/yellow]")
     phase_times["cve_check"] = time.time() - t0
 
+    # 7.5) Security checks (serviços abertos, HTTP recon, SSL, protocolos fracos)
+    t0 = time.time()
+    if config["mode"] != "ultra":
+        from src.services.security_checks import run_security_checks
+        console.print("\n[bold cyan]Executando verificações de segurança...[/bold cyan]")
+        check_http = config["mode"] == "completo"
+        sec_findings = run_security_checks(
+            results, timeout=config["timeout_socket"],
+            max_workers=config["max_workers_hosts"],
+            check_http=check_http,
+        )
+        # Attach findings to host results
+        total_findings = 0
+        for ip, findings in sec_findings.items():
+            if ip in results:
+                existing = results[ip].get("security_findings", [])
+                for f in findings:
+                    existing.append({
+                        "check": f.check,
+                        "severity": f.severity,
+                        "title": f.title,
+                        "detail": f.detail,
+                        "evidence": f.evidence,
+                        "remediation": f.remediation,
+                        "port": f.port,
+                        "score": f.severity_score,
+                    })
+                results[ip]["security_findings"] = existing
+                total_findings += len(findings)
+        if total_findings:
+            console.print(
+                f"[bold yellow]{total_findings} achados de segurança[/bold yellow] "
+                f"em {len(sec_findings)} hosts"
+            )
+        else:
+            console.print("[green]Nenhuma vulnerabilidade adicional encontrada.[/green]")
+    else:
+        console.print("[yellow]Modo ultra: verificações de segurança desativadas.[/yellow]")
+    phase_times["security_checks"] = time.time() - t0
+
     # 8) Relatório com classificação de risco
     table = gerar_tabela(results)
     console.print("\n[bold cyan]Resumo Final:[/bold cyan]")
