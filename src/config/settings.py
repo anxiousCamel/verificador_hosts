@@ -107,16 +107,16 @@ PRESET_ULTRA = {
 }
 
 PRESET_LIGHT = {
-    "hosts": 6,
-    "ports": 3,
+    "hosts": 8,               # Same parallelism as completo (was 6 = slower!)
+    "ports": 4,               # Same as completo (was 3 = slower!)
     "timeout": 1.5,           # Reduced from 2.0 (LAN doesn't need 2s)
-    "batch": 12,              # Increased from 8 (more concurrent hosts)
+    "batch": 12,
     "resolve_hostname": False,
     "tcp_only": True,
-    "skip_cve": True,
+    "skip_cve": False,         # CVEs ARE checked (was True = lost info!)
     "skip_nvd_update": False,
     "adaptive": True,
-    "fast_ports": False,
+    "fast_ports": True,        # 15 ports vs 40+ (THIS is what makes it "light")
     "ping_timeout_ms": 800,
     "discovery_workers": 40,
 }

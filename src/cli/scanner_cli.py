@@ -77,7 +77,7 @@ def main():
     )
     from src.services.nvd_updater import atualizar_base_nvd
     from src.infra.oui_loader import carregar_tabela_oui
-    from src.services.reporter import gerar_tabela, exportar_csv
+    from src.services.reporter import gerar_tabela, gerar_resumo_risco, exportar_csv
     from src.cli.input_handler import solicitar_dados_input
 
     # 3) Atualização NVD
@@ -131,10 +131,14 @@ def main():
         console.print("[yellow]skip_cve=1: verificação de CVEs desativada.[/yellow]")
     phase_times["cve_check"] = time.time() - t0
 
-    # 8) Relatório
+    # 8) Relatório com classificação de risco
     table = gerar_tabela(results)
     console.print("\n[bold cyan]Resumo Final:[/bold cyan]")
     console.print(table)
+
+    # Resumo de risco
+    console.print()
+    console.print(gerar_resumo_risco(results))
 
     # Performance profiling summary
     total_time = time.time() - t_start
