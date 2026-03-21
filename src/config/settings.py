@@ -91,28 +91,49 @@ _LIMITS = {
 # Presets por modo
 # ============================
 
+PRESET_ULTRA = {
+    "hosts": 10,
+    "ports": 4,
+    "timeout": 1.0,
+    "batch": 16,
+    "resolve_hostname": False,
+    "tcp_only": True,
+    "skip_cve": True,
+    "skip_nvd_update": True,
+    "adaptive": True,
+    "fast_ports": True,       # Use FAST_SCAN_PORTS (15 ports vs 40+)
+    "ping_timeout_ms": 500,   # Aggressive ping timeout (LAN only)
+    "discovery_workers": 50,  # High parallelism for alive discovery
+}
+
 PRESET_LIGHT = {
     "hosts": 6,
     "ports": 3,
-    "timeout": 2.0,
-    "batch": 8,
+    "timeout": 1.5,           # Reduced from 2.0 (LAN doesn't need 2s)
+    "batch": 12,              # Increased from 8 (more concurrent hosts)
     "resolve_hostname": False,
     "tcp_only": True,
     "skip_cve": True,
     "skip_nvd_update": False,
     "adaptive": True,
+    "fast_ports": False,
+    "ping_timeout_ms": 800,
+    "discovery_workers": 40,
 }
 
 PRESET_COMPLETE = {
     "hosts": 8,
     "ports": 4,
-    "timeout": 3.0,
-    "batch": 10,
+    "timeout": 2.5,           # Reduced from 3.0
+    "batch": 12,              # Increased from 10
     "resolve_hostname": True,
     "tcp_only": False,
     "skip_cve": False,
     "skip_nvd_update": False,
     "adaptive": True,
+    "fast_ports": False,
+    "ping_timeout_ms": 1000,
+    "discovery_workers": 30,
 }
 
 
@@ -123,12 +144,14 @@ def _select_preset(mode: str, is_win: bool) -> Dict:
     No modo "auto", Windows usa preset leve, Linux usa completo.
 
     Args:
-        mode: "leve", "completo" ou "auto".
+        mode: "leve", "completo", "ultra" ou "auto".
         is_win: True se Windows.
 
     Returns:
         Cópia do preset selecionado.
     """
+    if mode == "ultra":
+        return PRESET_ULTRA.copy()
     if mode == "leve":
         return PRESET_LIGHT.copy()
     if mode == "completo":
@@ -155,8 +178,8 @@ def _ask_mode_interactive(default: str) -> str:
 
     try:
         print(f"[config] Modo atual: {default}.")
-        answer = input("[config] Escolha o modo [auto|leve|completo] (Enter mantém): ").strip().lower()
-        return answer if answer in ("auto", "leve", "completo") else default
+        answer = input("[config] Escolha o modo [auto|leve|completo|ultra] (Enter mantém): ").strip().lower()
+        return answer if answer in ("auto", "leve", "completo", "ultra") else default
     except Exception:
         return default
 
@@ -256,7 +279,7 @@ def auto_configurar() -> Dict[str, object]:
     is_win = _is_windows()
 
     mode = (os.getenv("VH_MODE") or "auto").strip().lower()
-    if mode not in ("auto", "leve", "completo"):
+    if mode not in ("auto", "leve", "completo", "ultra"):
         mode = "auto"
     mode = _ask_mode_interactive(mode)
 
@@ -288,4 +311,7 @@ def auto_configurar() -> Dict[str, object]:
         "skip_nvd_update": bool(preset["skip_nvd_update"]),
         "mode": mode,
         "adaptive": bool(preset.get("adaptive", True)),
+        "fast_ports": bool(preset.get("fast_ports", False)),
+        "ping_timeout_ms": int(preset.get("ping_timeout_ms", 1000)),
+        "discovery_workers": int(preset.get("discovery_workers", 40)),
     }

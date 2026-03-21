@@ -11,9 +11,9 @@ Entry point do scanner de hosts com auditoria de segurança.
 3. Atualiza base NVD se necessário
 4. Carrega tabela OUI
 5. Solicita range de IPs ao usuário
-6. run_batch_scan() → varre com lotes + cache + governança
+6. run_batch_scan() → 2-phase: alive discovery + deep scan com lotes + cache
 7. run_cve_checks() → verifica CVEs nos banners coletados
-8. Exibe relatório Rich no terminal
+8. Exibe relatório Rich no terminal + performance profiling
 9. Oferta exportação CSV
 
 Camada: cli
@@ -25,6 +25,8 @@ Dependências: src.core.batch_scanner, src.config.settings,
 from __future__ import annotations
 
 import os
+import time
+from typing import Dict
 from rich.console import Console
 
 console = Console()
@@ -32,12 +34,18 @@ console = Console()
 
 def main():
     """Ponto de entrada principal do verificador de hosts."""
+    t_start = time.time()
+    phase_times: Dict[str, float] = {}
+
     # 1) Configuração (deve ser feito ANTES de importar scan_service)
     from src.config.settings import auto_configurar
     config = auto_configurar()
 
     skip_cve = bool(config["skip_cve"])
     skip_nvd_update = bool(config["skip_nvd_update"])
+    fast_ports = bool(config.get("fast_ports", False))
+    ping_timeout_ms = int(config.get("ping_timeout_ms", 1000))
+    discovery_workers = int(config.get("discovery_workers", 40))
 
     # 2) Configura ENV vars que scan_service lê no import (módulo-nível)
     os.environ["VH_MAX_SOCKETS"] = str(int(config["max_sockets"]))
@@ -56,7 +64,10 @@ def main():
         f"tcp_only={int(config['tcp_only'])} | "
         f"skip_cve={int(skip_cve)} | "
         f"skip_nvd_update={int(skip_nvd_update)} | "
-        f"adaptive={int(config.get('adaptive', True))}"
+        f"adaptive={int(config.get('adaptive', True))} | "
+        f"fast_ports={int(fast_ports)} | "
+        f"ping_timeout={ping_timeout_ms}ms | "
+        f"discovery_workers={discovery_workers}"
     )
 
     # Imports tardios — todos dependem de scan_service estar configurado via ENV
@@ -70,6 +81,7 @@ def main():
     from src.cli.input_handler import solicitar_dados_input
 
     # 3) Atualização NVD
+    t0 = time.time()
     if not skip_nvd_update and needs_nvd_update():
         console.print("\n[bold yellow]Atualizando base de vulnerabilidades da NVD...[/bold yellow]")
         try:
@@ -80,9 +92,12 @@ def main():
             console.print(f"[red]Falha ao atualizar base NVD: {e}[/red]")
     else:
         console.print("\n[bold cyan]Pulando atualização da NVD (recente ou desabilitada).[/bold cyan]\n")
+    phase_times["nvd_update"] = time.time() - t0
 
     # 4) Tabela OUI
+    t0 = time.time()
     oui_table = carregar_tabela_oui()
+    phase_times["oui_load"] = time.time() - t0
 
     # 5) Input do usuário
     print("\n==============================================")
@@ -104,19 +119,39 @@ def main():
         console.print("[red]Nenhum IP no intervalo informado.[/red]")
         return
 
-    # 6) Varredura com governança adaptativa + cache
-    results = run_batch_scan(config, ip_list, oui_table)
+    # 6) Varredura 2-phase com governança adaptativa + cache
+    results, scan_phases = run_batch_scan(config, ip_list, oui_table)
+    phase_times.update(scan_phases)
 
     # 7) Verificação de CVEs (centralizada, única passada)
+    t0 = time.time()
     if not skip_cve:
         run_cve_checks(results)
     else:
         console.print("[yellow]skip_cve=1: verificação de CVEs desativada.[/yellow]")
+    phase_times["cve_check"] = time.time() - t0
 
     # 8) Relatório
     table = gerar_tabela(results)
     console.print("\n[bold cyan]Resumo Final:[/bold cyan]")
     console.print(table)
+
+    # Performance profiling summary
+    total_time = time.time() - t_start
+    phase_times["total"] = total_time
+
+    console.print("\n[bold magenta]Performance Profile:[/bold magenta]")
+    for phase, duration in phase_times.items():
+        pct = (duration / total_time * 100) if total_time > 0 else 0
+        bar = "█" * int(pct / 3)
+        console.print(f"  {phase:20s}: {duration:6.1f}s  ({pct:4.1f}%) {bar}")
+
+    online_count = sum(1 for r in results.values() if r.get("status") == "ONLINE")
+    console.print(
+        f"\n[dim]Total: {len(results)} hosts ({online_count} online) "
+        f"em {total_time:.1f}s "
+        f"({total_time / max(1, len(results)):.2f}s/host)[/dim]"
+    )
 
     # 9) Exportação CSV
     try:
@@ -132,11 +167,6 @@ def main():
             path = "auditoria_hosts.csv"
         exportar_csv(results, path)
         console.print(f"[green]Exportado para {path}[/green]")
-
-    try:
-        input("\nPressione Enter para sair...")
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":

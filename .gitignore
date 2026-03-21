@@ -1,7 +1,8 @@
 # =====================
 # Ignorar arquivos e diretórios de cache Python
 # =====================
-**/__pycache__/        # Cache compilado dos módulos Python
+# Cache compilado dos módulos Python
+**/__pycache__/
 *.py[cod]              # Arquivos .pyc, .pyo, .pyd
 *$py.class             # Bytecode antigo do Jython
 

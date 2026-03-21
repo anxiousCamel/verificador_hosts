@@ -1,15 +1,20 @@
 """
-# src/core/batch_scanner.py — Orquestração de varredura em lotes
+# src/core/batch_scanner.py — Orquestração de varredura em lotes (2-Phase)
 
 ## Descrição
 Coordena a varredura paralela de hosts com governança adaptativa e cache.
 Não faz I/O com usuário — essa responsabilidade é de cli/scanner_cli.py.
 
-## Fluxo de run_batch_scan()
-1. Separa IPs cacheados dos que precisam ser varridos
-2. Varre em lotes com ThreadPoolExecutor
-3. Após cada lote: salva cache e consulta AdaptiveGovernor
-4. Governança adapta batch_size, host_workers, port_workers, timeout em runtime
+## Arquitetura 2-Phase (otimização principal de performance)
+
+Phase 1 — FAST ALIVE DISCOVERY:
+  Pinga TODOS os IPs em paralelo (40-50 workers) com timeout curto.
+  Elimina hosts offline em ~2-3s total ao invés de bloquear threads de scan.
+  Para 254 hosts com ~20 vivos: economiza ~230 * 2s = ~460s de ping desperdiçado.
+
+Phase 2 — DEEP SCAN (apenas hosts vivos):
+  Varre apenas hosts confirmados como vivos na Phase 1.
+  Usa batched parallel scanning com governança adaptativa.
 
 ## Nota sobre import tardio de scan_service
 scan_service lê VH_MAX_SOCKETS e VH_RESOLVE_HOSTNAME no momento do import.
@@ -147,16 +152,19 @@ def run_cve_checks(hosts: Dict[str, dict]) -> None:
 
 
 # ==============================
-# Varredura em lotes
+# Varredura em lotes (2-Phase)
 # ==============================
 
 def run_batch_scan(
     config: dict,
     ip_list: List[str],
     oui_table: dict,
-) -> Dict[str, dict]:
+) -> Tuple[Dict[str, dict], Dict[str, float]]:
     """
-    Executa varredura em lotes com governança adaptativa e cache.
+    Executa varredura em 2 fases com governança adaptativa e cache.
+
+    Phase 1: Fast alive discovery (parallel ping all IPs)
+    Phase 2: Deep scan only alive hosts in batches
 
     Nota: importa scan_service internamente pois ele lê ENV vars no import.
     O chamador (scanner_cli.py) deve configurar VH_MAX_SOCKETS,
@@ -168,13 +176,23 @@ def run_batch_scan(
         oui_table: Tabela OUI de fabricantes.
 
     Returns:
-        Dicionário IP -> resultado do scan.
+        Tupla (results, phase_times):
+        - results: Dicionário IP -> resultado do scan.
+        - phase_times: Dicionário com tempos por fase.
     """
     # Import tardio: scan_service lê ENV vars no módulo-nível
-    from src.services.scan_service import scan_host
+    from src.services.scan_service import (
+        scan_host_prescan, discover_alive_hosts,
+        _build_offline_result, FAST_SCAN_PORTS, DEFAULT_SCAN_PORTS,
+    )
 
     batch_size = max(1, int(config["batch_size"]))
     adaptive = bool(config.get("adaptive", True))
+    fast_ports = bool(config.get("fast_ports", False))
+    ping_timeout_ms = int(config.get("ping_timeout_ms", 1000))
+    discovery_workers = int(config.get("discovery_workers", 40))
+
+    scan_ports_list = FAST_SCAN_PORTS if fast_ports else DEFAULT_SCAN_PORTS
 
     host_workers = int(config["max_workers_hosts"])
     port_workers = int(config["max_workers_portas"])
@@ -182,17 +200,7 @@ def run_batch_scan(
 
     results: Dict[str, dict] = {}
     scan_cache = ScanCache()
-    spinner = start_spinner("Verificando hosts e portas")
-
-    governor = AdaptiveGovernor(
-        batch_size=batch_size,
-        host_workers=host_workers,
-        port_workers=port_workers,
-        socket_timeout=socket_timeout,
-        slow_threshold_sec=max(40.0, socket_timeout * 8),
-        very_slow_threshold_sec=max(60.0, socket_timeout * 12),
-        fast_threshold_sec=max(12.0, socket_timeout * 3),
-    )
+    phase_times: Dict[str, float] = {}
 
     # Separar IPs cacheados dos que precisam ser varridos
     ips_to_scan = []
@@ -211,10 +219,61 @@ def run_batch_scan(
             f"{len(ips_to_scan)} a varrer"
         )
 
-    total_to_scan = len(ips_to_scan)
-    total_ips = len(ip_list)
+    # ==========================================
+    # PHASE 1: FAST ALIVE DISCOVERY
+    # ==========================================
+    t0 = time.time()
+    console.print(
+        f"\n[bold cyan]Phase 1: Descoberta rápida[/bold cyan] "
+        f"({len(ips_to_scan)} IPs, {discovery_workers} workers, {ping_timeout_ms}ms timeout)"
+    )
+
+    alive_hosts = discover_alive_hosts(
+        ips_to_scan,
+        max_workers=discovery_workers,
+        timeout_ms=ping_timeout_ms,
+    )
+
+    # Mark non-alive hosts as OFFLINE immediately
+    offline_count = 0
+    for ip in ips_to_scan:
+        if ip not in alive_hosts:
+            results[ip] = _build_offline_result(ip)
+            offline_count += 1
+
+    alive_ips = [ip for ip in ips_to_scan if ip in alive_hosts]
+    phase_times["discovery"] = time.time() - t0
+
+    console.print(
+        f"[bold green]Phase 1 completa:[/bold green] "
+        f"{len(alive_ips)} vivos, {offline_count} offline "
+        f"({phase_times['discovery']:.1f}s)"
+    )
+
+    # ==========================================
+    # PHASE 2: DEEP SCAN (alive hosts only)
+    # ==========================================
+    if not alive_ips:
+        console.print("[yellow]Nenhum host vivo encontrado. Nada a varrer.[/yellow]")
+        return results, phase_times
+
+    t0 = time.time()
+
+    governor = AdaptiveGovernor(
+        batch_size=batch_size,
+        host_workers=host_workers,
+        port_workers=port_workers,
+        socket_timeout=socket_timeout,
+        slow_threshold_sec=max(30.0, socket_timeout * 8),
+        very_slow_threshold_sec=max(45.0, socket_timeout * 12),
+        fast_threshold_sec=max(8.0, socket_timeout * 3),
+    )
+
+    spinner = start_spinner("Varrendo hosts vivos")
+
+    total_alive = len(alive_ips)
     progress_total = tqdm(
-        total=total_ips, initial=cache_hits,
+        total=len(ip_list), initial=cache_hits + offline_count,
         desc="Total", ncols=100, position=0, dynamic_ncols=True,
     )
 
@@ -222,25 +281,30 @@ def run_batch_scan(
         pos = 0
         batch_idx = 0
 
-        while pos < total_to_scan:
+        while pos < total_alive:
             batch_idx += 1
-            batch_end = min(total_to_scan, pos + batch_size)
-            batch_ips = ips_to_scan[pos:batch_end]
+            batch_end = min(total_alive, pos + batch_size)
+            batch_ips = alive_ips[pos:batch_end]
             pos = batch_end
 
-            t0 = time.time()
+            t_batch = time.time()
 
             progress_batch = tqdm(
                 total=len(batch_ips),
-                desc=f"Lote {batch_idx} (hosts={host_workers},portas={port_workers},batch={batch_size})",
+                desc=f"Lote {batch_idx} (h={host_workers},p={port_workers},b={batch_size})",
                 ncols=100, position=1, leave=False, dynamic_ncols=True,
             )
 
             with ThreadPoolExecutor(max_workers=host_workers) as executor:
-                futures = {
-                    executor.submit(scan_host, ip, oui_table, port_workers, socket_timeout): ip
-                    for ip in batch_ips
-                }
+                futures = {}
+                for ip in batch_ips:
+                    ttl, lat = alive_hosts[ip]
+                    futures[executor.submit(
+                        scan_host_prescan, ip, ttl, lat,
+                        oui_table, port_workers, socket_timeout,
+                        ports=scan_ports_list,
+                    )] = ip
+
                 timeouts = 0
                 completed = 0
 
@@ -263,9 +327,9 @@ def run_batch_scan(
                     progress_total.update(1)
 
             progress_batch.close()
-            scan_cache.save()  # Resiliência a crashes
+            scan_cache.save()
 
-            duration = time.time() - t0
+            duration = time.time() - t_batch
 
             if adaptive:
                 adjusted, msg = governor.suggest(
@@ -288,4 +352,5 @@ def run_batch_scan(
         except Exception:
             pass
 
-    return results
+    phase_times["deep_scan"] = time.time() - t0
+    return results, phase_times
