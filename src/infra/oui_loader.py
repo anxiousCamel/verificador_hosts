@@ -1,14 +1,11 @@
 """
-# utils.py — Funções utilitárias do Verificador de Hosts
+# src/infra/oui_loader.py — Carregamento da tabela OUI (fabricantes por MAC)
 
 ## Descrição
-Funções auxiliares reutilizáveis:
-- Carregamento da tabela OUI (fabricantes por MAC, formato Wireshark/Nmap)
-- Detecção de encoding de arquivos (UTF-8, UTF-16 LE/BE)
-- Validação interativa de entrada de rede (base IP, faixa)
+Carrega a tabela OUI no formato Wireshark/Nmap para lookup de fabricantes
+a partir de endereços MAC.
 
-## Autor
-Luiz
+Camada: infra (sem dependências de projeto)
 """
 
 import os
@@ -17,10 +14,6 @@ from rich.console import Console
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 console = Console()
 
-
-# ============================
-# Detecção de encoding
-# ============================
 
 def _detect_encoding(filepath: str) -> str:
     """
@@ -48,10 +41,6 @@ def _detect_encoding(filepath: str) -> str:
     return "utf-8"
 
 
-# ============================
-# Tabela OUI (fabricantes)
-# ============================
-
 def carregar_tabela_oui(path: str = "manuf") -> dict:
     """
     Carrega tabela OUI no formato Wireshark/Nmap.
@@ -65,13 +54,15 @@ def carregar_tabela_oui(path: str = "manuf") -> dict:
     - Para OUIs de 3, 4 e 5 bytes (suporte a MA-L, MA-M, MA-S do IEEE)
 
     Args:
-        path: Caminho do arquivo OUI (relativo ao diretório do módulo).
+        path: Caminho do arquivo OUI. Relativo à raiz do projeto se não absoluto.
 
     Returns:
         Dicionário {oui_string: nome_fabricante}.
     """
+    # Resolve relativo à raiz do projeto (dois níveis acima de src/infra/)
     if not os.path.isabs(path):
-        path = os.path.join(_BASE_DIR, path)
+        project_root = os.path.dirname(os.path.dirname(_BASE_DIR))
+        path = os.path.join(project_root, path)
 
     oui_table: dict = {}
     if not os.path.exists(path):
@@ -87,7 +78,6 @@ def carregar_tabela_oui(path: str = "manuf") -> dict:
                 if not stripped or stripped.startswith("#"):
                     continue
 
-                # Parse: OUI<TAB>Short<TAB>Long...
                 parts = stripped.split("\t")
                 if len(parts) < 2:
                     parts = stripped.split()
@@ -116,49 +106,3 @@ def carregar_tabela_oui(path: str = "manuf") -> dict:
         console.print(f"[yellow]Aviso: tabela OUI vazia após ler {path}.[/yellow]")
 
     return oui_table
-
-
-# ============================
-# Input interativo
-# ============================
-
-def solicitar_dados_input() -> tuple:
-    """
-    Solicita dados da rede ao usuário via terminal.
-
-    Pede:
-    - Base da rede (ex: "10.101.6")
-    - IP inicial e final da faixa (1-254)
-
-    Valida formato e intervalo antes de retornar.
-
-    Returns:
-        Tupla (ip_base: str, ip_inicio: int, ip_fim: int).
-
-    Raises:
-        KeyboardInterrupt: Se o usuário cancelar (Ctrl+C).
-    """
-    console.print("==============================================", style="cyan")
-    console.print(" Verificador de Hosts com Auditoria de Segurança", style="bold white")
-    console.print("==============================================\n", style="cyan")
-
-    # Base da rede
-    while True:
-        ip_base = input("Digite a base da rede (ex: 10.101.6): ").strip()
-        octets = ip_base.split(".")
-        if len(octets) == 3 and all(o.isdigit() for o in octets):
-            break
-        console.print("[red]Base inválida. Use o formato: X.X.X (ex: 10.101.6)[/red]")
-
-    # Faixa de IPs
-    while True:
-        try:
-            start = int(input("IP inicial (ex: 1): "))
-            end = int(input("IP final (ex: 254): "))
-            if 0 < start <= 254 and 0 < end <= 254 and start <= end:
-                break
-            console.print("[red]Valores fora do intervalo válido (1 a 254).[/red]")
-        except ValueError:
-            console.print("[red]Digite números válidos.[/red]")
-
-    return ip_base, start, end

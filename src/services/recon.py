@@ -1,5 +1,5 @@
 """
-# pentest/recon.py — Fase 1: Descoberta inteligente de hosts
+# src/services/recon.py — Fase 1: Descoberta inteligente de hosts
 
 ## Filosofia
 Descobrir hosts ativos rápido e triagear imediatamente.
@@ -11,24 +11,20 @@ Um atacante real não perde tempo com hosts mortos.
 - Prioridade alta: hosts que respondem rápido + SO identificável
 - Prioridade baixa: hosts lentos ou com TTL ambíguo
 
-## Diferencial vs scanner genérico
-- Classifica cada host ANTES de gastar tempo com port scan
-- Hosts com TTL ~128 (Windows) ganham prioridade (superfície maior)
-- Hosts com latência alta são depriorizados (podem ser firewalls com ICMP)
+Camada: services
+Dependências: src.services.scan_service, src.models.pentest_models
 """
 
 from __future__ import annotations
 
-import sys
-import os
 from typing import List, Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Adicionar parent ao path para imports do projeto
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from scan import ping_host, resolve_hostname, get_mac_from_arp, lookup_manufacturer, RESOLVE_HOSTNAME
-from pentest.models import HostTarget
+from src.services.scan_service import (
+    ping_host, resolve_hostname, get_mac_from_arp,
+    lookup_manufacturer, RESOLVE_HOSTNAME,
+)
+from src.models.pentest_models import HostTarget
 
 
 def _triage_priority(ttl: int, latency_ms: float) -> int:
@@ -36,36 +32,29 @@ def _triage_priority(ttl: int, latency_ms: float) -> int:
     Calcula prioridade de investigação baseado em sinais iniciais.
 
     Lógica de atacante:
-    - Windows (TTL ~128) = prioridade alta (superfície de ataque maior:
-      SMB, RDP, WinRM, shares, etc.)
+    - Windows (TTL ~128) = prioridade alta (SMB, RDP, WinRM, shares)
     - Linux (TTL ~64) = prioridade média (SSH, web services)
-    - Cisco/Appliance (TTL ~255) = prioridade baixa (menos explorável remotamente)
+    - Cisco/Appliance (TTL ~255) = prioridade baixa
     - Latência muito alta (>200ms) = reduz prioridade (possível firewall)
     - Latência baixa (<5ms) = aumenta (host próximo, mesmo segmento)
-
-    Args:
-        ttl: Valor TTL do ping.
-        latency_ms: Latência em ms.
 
     Returns:
         Prioridade: 1 (baixa), 2 (média), 3 (alta).
     """
     if ttl < 0:
-        return 1  # Sem TTL = incerteza, mas está vivo
+        return 1
 
-    # SO estimado pelo TTL
     if ttl <= 70:
-        priority = 2  # Linux: SSH + web, superfície moderada
+        priority = 2
     elif ttl <= 140:
-        priority = 3  # Windows: SMB + RDP + WinRM, superfície ampla
+        priority = 3
     else:
-        priority = 1  # Appliance: superfície limitada
+        priority = 1
 
-    # Ajuste por latência
     if latency_ms > 200:
-        priority = max(1, priority - 1)  # Pode ser firewall ou longe
+        priority = max(1, priority - 1)
     elif latency_ms < 5 and latency_ms > 0:
-        priority = min(3, priority + 1)  # Mesmo segmento, vale investigar
+        priority = min(3, priority + 1)
 
     return priority
 
@@ -83,14 +72,7 @@ def _discover_single_host(
     - Quão perto está? (latência)
     - Hostname e MAC (se disponíveis)
 
-    NÃO faz port scan aqui — isso é responsabilidade da fase 2.
-
-    Args:
-        ip: Endereço IP.
-        oui_table: Tabela OUI para lookup de fabricante.
-
-    Returns:
-        HostTarget com dados de recon.
+    NÃO faz port scan — responsabilidade da fase 2 (services/enumeration.py).
     """
     target = HostTarget(ip=ip)
 
@@ -104,7 +86,6 @@ def _discover_single_host(
     target.latency_ms = latency
     target.priority = _triage_priority(ttl, latency)
 
-    # Metadata básica (não custa quase nada e ajuda na triagem)
     if RESOLVE_HOSTNAME:
         target.hostname = resolve_hostname(ip)
 
@@ -113,13 +94,11 @@ def _discover_single_host(
         manufacturer = lookup_manufacturer(target.mac, oui_table)
         if manufacturer != "N/D":
             target.add_decision("RECON", f"Fabricante: {manufacturer} (MAC: {target.mac})")
-            # Appliances de rede conhecidos → reduz prioridade
             net_vendors = ("cisco", "juniper", "arista", "fortinet", "paloalto", "mikrotik")
             if any(v in manufacturer.lower() for v in net_vendors):
                 target.priority = min(target.priority, 1)
-                target.add_decision("RECON", f"Fabricante de rede detectado → prioridade reduzida")
+                target.add_decision("RECON", "Fabricante de rede detectado → prioridade reduzida")
 
-    # Estimativa de SO pelo TTL
     if ttl <= 70:
         target.os_guess = "Linux/Unix"
     elif ttl <= 140:
@@ -149,12 +128,10 @@ def discover_hosts(
     por prioridade de investigação. Hosts mortos são descartados
     imediatamente.
 
-    O número de workers é alto porque ping é I/O-bound e leve.
-
     Args:
         ip_list: Lista de IPs para verificar.
-        oui_table: Tabela OUI.
-        workers: Número de threads (padrão alto pois ping é leve).
+        oui_table: Tabela OUI para lookup de fabricante.
+        workers: Número de threads (alto pois ping é I/O-bound e leve).
         callback: Função chamada a cada host descoberto (para progresso).
 
     Returns:
@@ -180,7 +157,5 @@ def discover_hosts(
                 t.add_decision("RECON", f"Erro ao verificar {ip} → SKIP")
                 targets.append(t)
 
-    # Ordena: vivos primeiro, depois por prioridade (decrescente)
     targets.sort(key=lambda t: (-int(t.is_alive), -t.priority, t.ip))
-
     return targets

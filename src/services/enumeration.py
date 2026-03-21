@@ -1,5 +1,5 @@
 """
-# pentest/enumeration.py — Fase 2-3: Enumeração direcionada + Análise
+# src/services/enumeration.py — Fase 2-3: Enumeração direcionada + Análise
 
 ## Filosofia
 Não escanear todas as portas em todos os hosts.
@@ -15,47 +15,46 @@ Escolher O QUE testar baseado NO QUE já sabemos.
 - Identifica serviço pelo banner (não apenas pela porta)
 - Mapeia versão → vulnerabilidades conhecidas
 - Classifica cada porta por criticidade para pentest
+
+Camada: services
+Dependências: src.services.scan_service, src.services.cve_analyzer, src.models.pentest_models
 """
 
 from __future__ import annotations
 
-import sys
-import os
+import re
 from typing import List, Dict, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from scan import scan_ports, detect_os_enhanced, CRITICAL_PORTS, DEFAULT_SCAN_PORTS
-from pentest.models import HostTarget, PortInfo, Finding
+from src.services.scan_service import (
+    scan_ports, detect_os_enhanced, CRITICAL_PORTS, DEFAULT_SCAN_PORTS,
+)
+from src.models.pentest_models import HostTarget, PortInfo, Finding
 
 
 # ==============================
 # Seleção inteligente de portas
 # ==============================
 
-# Portas por perfil de SO (atacante prioriza superfície provável)
 _WINDOWS_PRIORITY_PORTS = sorted({
-    22, 80, 443, 135, 139, 445, 3389, 5985, 5986,  # Core Windows
-    1433,  # SQL Server
-    8080, 8443,  # Web alternativo
-    3306, 5432,  # DBs (podem existir)
-    25, 110, 143,  # Mail
+    22, 80, 443, 135, 139, 445, 3389, 5985, 5986,
+    1433, 8080, 8443,
+    3306, 5432,
+    25, 110, 143,
 })
 
 _LINUX_PRIORITY_PORTS = sorted({
-    22, 80, 443, 8080, 8443, 8000, 8888,  # SSH + Web
-    3306, 5432, 6379, 27017, 11211,  # Databases
-    25, 110, 143,  # Mail
-    21,  # FTP
-    3000, 3001, 4000, 9100,  # App servers
+    22, 80, 443, 8080, 8443, 8000, 8888,
+    3306, 5432, 6379, 27017, 11211,
+    25, 110, 143,
+    21,
+    3000, 3001, 4000, 9100,
 })
 
 _APPLIANCE_PRIORITY_PORTS = sorted({
-    22, 23, 80, 443, 8443, 161,  # Admin + SNMP
+    22, 23, 80, 443, 8443, 161,
 })
 
-# Serviço por porta (para quando não tem banner)
 _PORT_SERVICE_MAP: Dict[int, str] = {
     21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp",
     80: "http", 110: "pop3", 135: "msrpc", 137: "netbios",
@@ -71,24 +70,19 @@ _PORT_SERVICE_MAP: Dict[int, str] = {
     515: "lpd", 990: "ftps",
 }
 
-# Serviços críticos (atacante foca aqui)
-_CRITICAL_SERVICES = {"smb", "rdp", "ssh", "telnet", "winrm", "vnc", "ftp", "mssql", "mysql", "postgresql", "redis", "mongodb", "memcached"}
+_CRITICAL_SERVICES = {
+    "smb", "rdp", "ssh", "telnet", "winrm", "vnc", "ftp",
+    "mssql", "mysql", "postgresql", "redis", "mongodb", "memcached",
+}
 
 
 def _select_ports_for_host(target: HostTarget) -> List[int]:
     """
     Seleciona portas a escanear baseado no perfil do host.
 
-    Decisão de atacante:
-    - Prioridade 3 (alta) → scan completo (todas as portas comuns)
+    - Prioridade 3 (alta) → scan completo
     - Prioridade 2 (média) → portas por perfil de SO
     - Prioridade 1 (baixa) → apenas portas críticas mínimas
-
-    Args:
-        target: Host com dados de recon.
-
-    Returns:
-        Lista de portas a escanear.
     """
     if target.priority >= 3:
         target.add_decision("ENUM", "Prioridade ALTA → scan completo de portas")
@@ -105,7 +99,6 @@ def _select_ports_for_host(target: HostTarget) -> List[int]:
             target.add_decision("ENUM", "SO desconhecido + prioridade MÉDIA → portas padrão")
             return DEFAULT_SCAN_PORTS
 
-    # Prioridade baixa
     if target.os_guess == "Cisco/Appliance":
         target.add_decision("ENUM", "Appliance + prioridade BAIXA → portas mínimas de admin")
         return _APPLIANCE_PRIORITY_PORTS
@@ -120,18 +113,13 @@ def _identify_service(port: int, banner: str) -> Tuple[str, str, str]:
 
     Estratégia em camadas:
     1. Tenta extrair do banner (mais confiável)
-    2. Fallback para mapeamento por porta (menos confiável)
-
-    Args:
-        port: Número da porta.
-        banner: Banner coletado.
+    2. Fallback para mapeamento por porta
 
     Returns:
         Tupla (service, product, version).
     """
     banner_lower = (banner or "").lower()
 
-    # Identificação por banner (mais confiável que porta)
     if "ssh" in banner_lower:
         return "ssh", _extract_product(banner), _extract_version(banner)
     if "http" in banner_lower or "server:" in banner_lower:
@@ -154,22 +142,14 @@ def _identify_service(port: int, banner: str) -> Tuple[str, str, str]:
     if "mongodb" in banner_lower:
         return "mongodb", _extract_product(banner), _extract_version(banner)
 
-    # Fallback: identificação por porta
     service = _PORT_SERVICE_MAP.get(port, "unknown")
-
-    # Tenta extrair produto/versão mesmo sem match de serviço
-    product = _extract_product(banner)
-    version = _extract_version(banner)
-
-    return service, product, version
+    return service, _extract_product(banner), _extract_version(banner)
 
 
 def _extract_product(banner: str) -> str:
     """Extrai nome do produto do banner (best-effort)."""
     if not banner or banner == "-":
         return ""
-    import re
-    # produto/versão ou produto_versão
     m = re.search(r'([A-Za-z][A-Za-z0-9_\-]+)[/_\s]v?[0-9]', banner, re.IGNORECASE)
     if m:
         return m.group(1).strip().lower()
@@ -180,7 +160,6 @@ def _extract_version(banner: str) -> str:
     """Extrai versão do banner (best-effort)."""
     if not banner or banner == "-":
         return ""
-    import re
     m = re.search(r'(\d+\.\d+(?:\.\d+)?(?:[a-z][0-9a-z]*)?)', banner)
     return m.group(1) if m else ""
 
@@ -203,18 +182,9 @@ def _enumerate_single_host(
     3. Identifica serviços e versões
     4. Refina estimativa de SO com dados de portas/banners
     5. Classifica criticidade de cada porta
-
-    Args:
-        target: Host com dados de recon.
-        port_workers: Threads para port scan.
-        socket_timeout: Timeout por conexão.
-
-    Returns:
-        HostTarget enriquecido com dados de enumeração.
     """
     ports_to_scan = _select_ports_for_host(target)
 
-    # Port scan
     open_ports = scan_ports(
         target.ip, ports_to_scan,
         timeout=socket_timeout,
@@ -225,7 +195,6 @@ def _enumerate_single_host(
         target.add_decision("ENUM", "Nenhuma porta aberta → host pode ter firewall ativo")
         return target
 
-    # Identificar serviços
     for port, banner in open_ports:
         service, product, version = _identify_service(port, banner)
         is_critical = port in CRITICAL_PORTS or service in _CRITICAL_SERVICES
@@ -241,10 +210,8 @@ def _enumerate_single_host(
         )
         target.open_ports.append(port_info)
 
-    # Refinar SO com dados de portas + banners
     target.os_guess = detect_os_enhanced(target.ttl, open_ports)
 
-    # Recalcular prioridade baseado na superfície real
     if target.critical_ports:
         old_priority = target.priority
         target.priority = max(target.priority, 2)
@@ -256,7 +223,6 @@ def _enumerate_single_host(
                 f"Portas críticas encontradas → prioridade {old_priority}→{target.priority}"
             )
 
-    # Log de resultados
     services_found = [f"{p.port}/{p.service}" for p in target.open_ports]
     target.add_decision(
         "ENUM",
@@ -278,23 +244,15 @@ def _analyze_services(target: HostTarget) -> List[Finding]:
     - Serviços intrinsecamente perigosos (Telnet, FTP sem TLS, etc.)
     - Versões conhecidamente vulneráveis (via CVE)
     - Misconfigurations comuns
-
-    Args:
-        target: Host enumerado.
-
-    Returns:
-        Lista de Findings.
     """
     findings: List[Finding] = []
 
     for port_info in target.open_ports:
-        # --- Serviços perigosos por natureza ---
 
         if port_info.service == "telnet":
             findings.append(Finding(
                 host=target.ip, port=port_info.port,
-                category="exposure",
-                severity="alto",
+                category="exposure", severity="alto",
                 title="Telnet exposto",
                 detail="Telnet transmite credenciais em texto plano. Qualquer atacante no "
                        "mesmo segmento pode interceptar login/senha via sniffing.",
@@ -306,8 +264,7 @@ def _analyze_services(target: HostTarget) -> List[Finding]:
         if port_info.service == "ftp" and not port_info.tls:
             findings.append(Finding(
                 host=target.ip, port=port_info.port,
-                category="exposure",
-                severity="medio",
+                category="exposure", severity="medio",
                 title="FTP sem TLS exposto",
                 detail="FTP transmite credenciais e dados em texto plano.",
                 evidence=f"Porta {port_info.port}, banner: {port_info.banner}",
@@ -317,8 +274,7 @@ def _analyze_services(target: HostTarget) -> List[Finding]:
         if port_info.service == "rdp":
             findings.append(Finding(
                 host=target.ip, port=port_info.port,
-                category="exposure",
-                severity="medio",
+                category="exposure", severity="medio",
                 title="RDP exposto",
                 detail="RDP é alvo frequente de ataques (BlueKeep, brute force). "
                        "Exposição em rede interna aumenta superfície de ataque lateral.",
@@ -329,8 +285,7 @@ def _analyze_services(target: HostTarget) -> List[Finding]:
         if port_info.service == "vnc":
             findings.append(Finding(
                 host=target.ip, port=port_info.port,
-                category="exposure",
-                severity="alto",
+                category="exposure", severity="alto",
                 title="VNC exposto",
                 detail="VNC frequentemente usa autenticação fraca ou nenhuma. "
                        "Permite controle remoto completo da máquina.",
@@ -341,20 +296,18 @@ def _analyze_services(target: HostTarget) -> List[Finding]:
         if port_info.service in ("redis", "memcached", "mongodb"):
             findings.append(Finding(
                 host=target.ip, port=port_info.port,
-                category="exposure",
-                severity="alto",
+                category="exposure", severity="alto",
                 title=f"{port_info.service.upper()} exposto sem autenticação provável",
                 detail=f"{port_info.service} frequentemente roda sem autenticação. "
                        f"Permite leitura/escrita de dados e potencial RCE.",
                 evidence=f"Porta {port_info.port} aberta, banner: {port_info.banner}",
-                remediation=f"Habilitar autenticação e restringir bind address.",
+                remediation="Habilitar autenticação e restringir bind address.",
             ))
 
         if port_info.service == "smb":
             findings.append(Finding(
                 host=target.ip, port=port_info.port,
-                category="exposure",
-                severity="medio",
+                category="exposure", severity="medio",
                 title="SMB exposto",
                 detail="SMB é vetor para EternalBlue, relay attacks, e enumeração "
                        "de shares/usuários. Versões antigas (SMBv1) são especialmente perigosas.",
@@ -362,10 +315,10 @@ def _analyze_services(target: HostTarget) -> List[Finding]:
                 remediation="Desabilitar SMBv1. Restringir acesso por firewall.",
             ))
 
-    # --- CVE matching (usa o módulo existente) ---
+    # CVE matching
     if any(p.version for p in target.open_ports):
         try:
-            from cve import verificar_vulnerabilidades_em_banners
+            from src.services.cve_analyzer import verificar_vulnerabilidades_em_banners
             banners = [f"{p.port}:{p.banner}" for p in target.open_ports if p.banner != "-"]
             if banners:
                 confirmed, suspected = verificar_vulnerabilidades_em_banners(
@@ -374,18 +327,16 @@ def _analyze_services(target: HostTarget) -> List[Finding]:
                 for cve_id in confirmed:
                     findings.append(Finding(
                         host=target.ip, port=0,
-                        category="cve",
-                        severity="alto",
+                        category="cve", severity="alto",
                         title=f"CVE confirmado: {cve_id}",
-                        detail=f"Versão do serviço corresponde a faixa vulnerável no NVD.",
+                        detail="Versão do serviço corresponde a faixa vulnerável no NVD.",
                         cve_ids=[cve_id],
                         remediation="Atualizar o serviço para versão corrigida.",
                     ))
-                for cve_id in suspected[:10]:  # Limitar suspeitas para não poluir
+                for cve_id in suspected[:10]:
                     findings.append(Finding(
                         host=target.ip, port=0,
-                        category="cve",
-                        severity="baixo",
+                        category="cve", severity="baixo",
                         title=f"CVE suspeito: {cve_id}",
                         detail="Produto identificado mas versão exata não confirmada.",
                         cve_ids=[cve_id],
@@ -418,7 +369,7 @@ def enumerate_targets(
     Cada host recebe scan personalizado baseado no seu perfil.
 
     Args:
-        targets: Hosts da fase 1 (filtrar vivos antes).
+        targets: Hosts da fase 1.
         port_workers: Threads para port scan por host.
         socket_timeout: Timeout de conexão.
         host_workers: Threads para processar hosts em paralelo.
@@ -439,7 +390,6 @@ def enumerate_targets(
         for future in as_completed(futures):
             try:
                 target = future.result(timeout=(socket_timeout * 2) + 10)
-                # Análise imediata (fase 3 integrada — sem reprocessamento)
                 findings = _analyze_services(target)
                 target.findings.extend(findings)
                 all_findings.extend(findings)

@@ -1,5 +1,5 @@
 """
-# config.py — Auto-configuração conservadora do scanner
+# src/config/settings.py — Auto-configuração conservadora do scanner
 
 ## Descrição
 Define presets de configuração por modo (leve/completo/auto) e aplica
@@ -9,10 +9,10 @@ Filosofia:
 - O modo define **features** (resolver hostname, checar CVEs, etc.)
 - O paralelismo é sempre conservador para não travar a máquina
 - Clamps duros impedem valores perigosos vindos de ENV
-- A governança adaptativa (__main__.py) pode reduzir ainda mais em runtime
+- A governança adaptativa (core/governor.py) pode reduzir ainda mais em runtime
 
 ## Saída
-Dict consumido por __main__.py com todos os parâmetros operacionais:
+Dict consumido por core/batch_scanner.py com todos os parâmetros operacionais:
 - max_workers_hosts, max_workers_portas, timeout_socket
 - max_sockets, batch_size
 - resolve_hostname, tcp_only, skip_cve, skip_nvd_update
@@ -28,14 +28,12 @@ Dict consumido por __main__.py com todos os parâmetros operacionais:
 - `VH_BATCH_SIZE`: 6-16
 - `VH_RESOLVE_HOSTNAME`, `VH_TCP_ONLY`, `VH_SKIP_CVE`, `VH_SKIP_NVD_UPDATE`: 0/1
 
-## Autor
-Luiz
+Camada: config (sem dependências de projeto)
 """
 
 from __future__ import annotations
 
 import os
-import sys
 import platform
 from typing import Dict
 
@@ -80,12 +78,12 @@ def _is_windows() -> bool:
 # ============================
 
 _LIMITS = {
-    "hosts":   (4, 12),     # min, max workers por host
-    "ports":   (2, 6),      # min, max workers por porta
+    "hosts":       (4, 12),
+    "ports":       (2, 6),
     "sockets_win": (64, 128),
     "sockets_nix": (64, 160),
-    "batch":   (6, 16),
-    "timeout": (1.5, 5.0),
+    "batch":       (6, 16),
+    "timeout":     (1.5, 5.0),
 }
 
 
@@ -135,7 +133,6 @@ def _select_preset(mode: str, is_win: bool) -> Dict:
         return PRESET_LIGHT.copy()
     if mode == "completo":
         return PRESET_COMPLETE.copy()
-    # auto: Windows → leve (evita travar), Linux → completo
     return PRESET_LIGHT.copy() if is_win else PRESET_COMPLETE.copy()
 
 
@@ -174,13 +171,6 @@ def _apply_clamps(preset: Dict, is_win: bool) -> Dict:
 
     Garante que hosts * ports não exceda 85% de max_sockets
     (evita exaustão de file descriptors).
-
-    Args:
-        preset: Dicionário de configuração.
-        is_win: True se Windows.
-
-    Returns:
-        Preset com valores clampados.
     """
     hmin, hmax = _LIMITS["hosts"]
     pmin, pmax = _LIMITS["ports"]
@@ -192,14 +182,12 @@ def _apply_clamps(preset: Dict, is_win: bool) -> Dict:
     batch = max(bmin, min(bmax, int(preset["batch"])))
     timeout = _env_float("VH_TIMEOUT_SOCKET", float(preset["timeout"]), tmin, tmax)
 
-    # max_sockets por SO
     if is_win:
         smin, smax = _LIMITS["sockets_win"]
     else:
         smin, smax = _LIMITS["sockets_nix"]
     max_sockets = _env_int("VH_MAX_SOCKETS", smax, smin, smax)
 
-    # Garante hosts * ports <= 85% max_sockets
     safe_limit = int(max_sockets * 0.85)
     while hosts * ports > safe_limit and ports > pmin:
         ports -= 1
@@ -217,16 +205,7 @@ def _apply_clamps(preset: Dict, is_win: bool) -> Dict:
 
 
 def _apply_env_overrides(preset: Dict, is_win: bool) -> Dict:
-    """
-    Aplica overrides de variáveis de ambiente ao preset.
-
-    Args:
-        preset: Dicionário de configuração.
-        is_win: True se Windows.
-
-    Returns:
-        Preset com overrides aplicados e re-clampados.
-    """
+    """Aplica overrides de variáveis de ambiente ao preset."""
     hmin, hmax = _LIMITS["hosts"]
     pmin, pmax = _LIMITS["ports"]
     bmin, bmax = _LIMITS["batch"]
@@ -285,7 +264,6 @@ def auto_configurar() -> Dict[str, object]:
     preset = _apply_clamps(preset, is_win)
     preset = _apply_env_overrides(preset, is_win)
 
-    # Log informativo
     estimated_sockets = preset["hosts"] * preset["ports"]
     print(
         f"[config] modo={mode} | hosts={preset['hosts']} | portas={preset['ports']} | "

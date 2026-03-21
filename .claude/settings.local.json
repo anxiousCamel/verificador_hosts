@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kbuildsycoca6 --noincremental)",
+      "Bash(BASE=\"/var/home/pc/Área de trabalho/Dev/verificador_hosts\")",
+      "Bash(mkdir -p \"$BASE/src/cli\" \"$BASE/src/core\" \"$BASE/src/services\" \"$BASE/src/infra\" \"$BASE/src/models\" \"$BASE/src/config\" \"$BASE/docs\")",
+      "Bash(rm \"$BASE/__main__.py\" \"$BASE/scan.py\" \"$BASE/cve.py\" \"$BASE/atualizar_nvd.py\" \"$BASE/relatorio.py\" \"$BASE/cache.py\" \"$BASE/config.py\" \"$BASE/utils.py\" \"$BASE/pentest/__init__.py\" \"$BASE/pentest/__main__.py\" \"$BASE/pentest/auth.py\" \"$BASE/pentest/deep_enum.py\" \"$BASE/pentest/enumeration.py\" \"$BASE/pentest/models.py\" \"$BASE/pentest/pipeline.py\" \"$BASE/pentest/recon.py\")",
+      "Bash(__NEW_LINE_bd9f2dc691fe3130__ rmdir:*)",
+      "Bash(__NEW_LINE_bd9f2dc691fe3130__ echo:*)"
+    ]
+  }
+}
